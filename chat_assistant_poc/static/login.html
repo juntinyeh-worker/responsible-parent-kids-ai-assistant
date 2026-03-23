@@ -1,0 +1,180 @@
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登入 - 十萬個為什麼？</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    .login-box {
+      text-align: center;
+      padding: 2.5rem;
+      max-width: 380px;
+      width: 90%;
+      background: rgba(255,255,255,0.12);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    p.subtitle { font-size: 0.95rem; opacity: 0.8; margin-bottom: 2rem; }
+    label { display: block; font-size: 1rem; margin-bottom: 0.5rem; text-align: left; }
+    input[type="text"] {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.5rem;
+      text-align: center;
+      letter-spacing: 0.3em;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input::placeholder { color: rgba(255,255,255,0.4); letter-spacing: 0.1em; font-size: 1rem; }
+    input:focus { border-color: rgba(255,255,255,0.7); }
+    button {
+      margin-top: 1.5rem;
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: #4CAF50;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover { background: #43a047; transform: translateY(-1px); }
+    button:disabled { background: #888; cursor: not-allowed; transform: none; }
+    .error { margin-top: 1rem; color: #ff8a80; font-size: 0.9rem; min-height: 1.2em; }
+    .spinner { display: none; margin-top: 1rem; font-size: 1.2rem; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>🎓 十萬個為什麼？</h1>
+    <p class="subtitle">請輸入序號登入</p>
+    <form id="login-form">
+      <label for="serial">序號</label>
+      <input type="text" id="serial" name="serial" placeholder="1234"
+             inputmode="numeric" pattern="[0-9]*" autocomplete="off" autofocus>
+      <button type="submit" id="submit-btn">登入</button>
+    </form>
+    <div class="spinner" id="spinner">⏳ 登入中...</div>
+    <div class="error" id="error" role="alert"></div>
+  </div>
+  <script>
+    // Cognito config (public client, no secret)
+    const COGNITO_REGION = 'ap-east-2';
+    const COGNITO_CLIENT_ID = '2e9963bvrr1hf2646r82utcp9p';
+    const LOGIN_EMAIL = 'testuser@test.com';
+    const PASSWORD_PREFIX = 'TempPass';
+
+    const form = document.getElementById('login-form');
+    const serialInput = document.getElementById('serial');
+    const submitBtn = document.getElementById('submit-btn');
+    const spinner = document.getElementById('spinner');
+    const errorEl = document.getElementById('error');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const serial = serialInput.value.trim();
+      if (!serial) { errorEl.textContent = '請輸入序號'; return; }
+
+      errorEl.textContent = '';
+      submitBtn.disabled = true;
+      spinner.style.display = '';
+
+      try {
+        const password = PASSWORD_PREFIX + serial;
+        const token = await cognitoAuth(LOGIN_EMAIL, password);
+
+        // Set session cookies and redirect
+        // Short flag cookie for CloudFront Function auth check
+        document.cookie = `cvt-authed=1; path=/; secure; samesite=lax; max-age=3600`;
+        // Full token for API calls
+        document.cookie = `cvt-session=${token}; path=/; secure; samesite=lax; max-age=3600`;
+        console.log('Cookies set. Current cookies:', document.cookie);
+        await new Promise(r => setTimeout(r, 100));
+        window.location.replace('/');
+      } catch (err) {
+        if (err.message === 'NEW_PASSWORD_REQUIRED') {
+          // First login — need to complete challenge, retry will work after
+          errorEl.textContent = '首次登入設定中，請再試一次...';
+        } else {
+          errorEl.textContent = '序號錯誤，請重新輸入';
+        }
+        console.error('Login error:', err);
+      } finally {
+        submitBtn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    });
+
+    async function cognitoAuth(username, password) {
+      const endpoint = `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`;
+
+      // Step 1: InitiateAuth with USER_PASSWORD_AUTH
+      let resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+        },
+        body: JSON.stringify({
+          AuthFlow: 'USER_PASSWORD_AUTH',
+          ClientId: COGNITO_CLIENT_ID,
+          AuthParameters: { USERNAME: username, PASSWORD: password },
+        }),
+      });
+
+      let data = await resp.json();
+
+      if (data.__type && data.__type.includes('NotAuthorizedException')) {
+        throw new Error('Invalid credentials');
+      }
+      if (data.__type && data.__type.includes('UserNotFoundException')) {
+        throw new Error('Invalid credentials');
+      }
+
+      // Handle NEW_PASSWORD_REQUIRED challenge
+      if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-amz-json-1.1',
+            'X-Amz-Target': 'AWSCognitoIdentityProviderService.RespondToAuthChallenge',
+          },
+          body: JSON.stringify({
+            ChallengeName: 'NEW_PASSWORD_REQUIRED',
+            ClientId: COGNITO_CLIENT_ID,
+            Session: data.Session,
+            ChallengeResponses: {
+              USERNAME: username,
+              NEW_PASSWORD: password,
+            },
+          }),
+        });
+        data = await resp.json();
+      }
+
+      const idToken = data.AuthenticationResult && data.AuthenticationResult.IdToken;
+      if (!idToken) {
+        throw new Error(data.__type || 'Auth failed');
+      }
+      return idToken;
+    }
+  </script>
+</body>
+</html>

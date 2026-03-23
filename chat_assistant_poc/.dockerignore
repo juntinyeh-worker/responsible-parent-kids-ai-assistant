@@ -1,0 +1,12 @@
+# Exclude ALL dotfiles and dotfolders
+.*
+
+# Exclude non-runtime files
+__pycache__/
+logs/
+tests/
+node_modules/
+infra/
+*.md
+*.pdf
+*.pyc
