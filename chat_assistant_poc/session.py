@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # GA endpoint (Aug 2025+)
 GA_URL = "https://api.openai.com/v1/realtime/client_secrets"
-GA_MODEL = "gpt-realtime"
+GA_MODEL = "gpt-4o-mini-realtime"
 GA_TRANSCRIPTION_MODEL = "gpt-realtime-transcription"
 
 # Beta endpoint (fallback)
@@ -69,6 +69,12 @@ async def _try_endpoint(
                 "audio": {"output": {"voice": "alloy"}},
                 "instructions": SYSTEM_PROMPT,
                 "input_audio_transcription": {"model": transcription_model},
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.6,
+                    "prefix_padding_ms": 500,
+                    "silence_duration_ms": 1000,
+                },
             }
         }
         headers = {

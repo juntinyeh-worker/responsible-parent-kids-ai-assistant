@@ -36,13 +36,12 @@ function transition(event) {
   console.log(`State: ${currentState} → ${newState} (${event})`);
   currentState = newState;
 
-  // Mic mute logic: mute during PROCESSING and RESPONDING, unmute for LISTENING and SPEAKING
-  const mutedStates = [STATES.PROCESSING, STATES.RESPONDING, STATES.CONNECTING];
-  const unmutedStates = [STATES.LISTENING, STATES.SPEAKING];
-  if (mutedStates.includes(currentState)) {
+  // Mic mute logic: auto-mute when speech is sent, NEVER auto-unmute (user controls that)
+  const autoMuteStates = [STATES.PROCESSING, STATES.RESPONDING, STATES.CONNECTING];
+  if (autoMuteStates.includes(currentState)) {
+    micUserMuted = true;
     setMicMuted(true);
-  } else if (unmutedStates.includes(currentState)) {
-    setMicMuted(false);
+    updateMicToggleBtn();
   }
 
   updateUI();
@@ -71,6 +70,7 @@ const statusEl = document.getElementById('status-text');
 const startBtn = document.getElementById('start-btn');
 const retryBtn = document.getElementById('retry-btn');
 const stopBtn = document.getElementById('stop-btn');
+const micToggleBtn = document.getElementById('mic-toggle-btn');
 const unsupportedEl = document.getElementById('unsupported');
 const transcriptEl = document.getElementById('transcript');
 const transcriptContent = document.getElementById('transcript-content');
@@ -96,6 +96,7 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT = 3;
 let conversationHistory = [];
 let currentTurn = { input: '', output: '', turnNumber: 0 };
+let micUserMuted = true; // Start muted, user must toggle ON
 
 // --- Mic Mute Control ---
 function setMicMuted(muted) {
@@ -118,7 +119,7 @@ const STATUS_MESSAGES = {
   SPEAKING: '🗣️ 我聽到你了...',
   PROCESSING: '🤔 讓我想想...',
   RESPONDING: '💬 正在回答...',
-  ERROR: '😔 連線出了問題',
+  ERROR: '� 連線出了問題',
 };
 
 const AVATAR_EMOJIS = {
@@ -126,17 +127,30 @@ const AVATAR_EMOJIS = {
   SPEAKING: '🗣️', PROCESSING: '🤔', RESPONDING: '💬', ERROR: '😔',
 };
 
+function updateMicToggleBtn() {
+  if (!micToggleBtn) return;
+  if (micUserMuted) {
+    micToggleBtn.textContent = '🔇 Mic OFF';
+    micToggleBtn.style.background = '#2196F3';
+  } else {
+    micToggleBtn.textContent = '🎤 Mic ON';
+    micToggleBtn.style.background = '#4CAF50';
+  }
+}
+
 function updateUI() {
   avatarEl.className = `avatar ${currentState.toLowerCase()}`;
   avatarEl.textContent = AVATAR_EMOJIS[currentState] || '🤖';
   statusEl.textContent = STATUS_MESSAGES[currentState] || '';
   startBtn.style.display = currentState === STATES.IDLE ? '' : 'none';
   retryBtn.style.display = currentState === STATES.ERROR ? '' : 'none';
-  // Show stop button during active conversation states
+  // Show mic toggle and stop button during active conversation
   const activeStates = [STATES.LISTENING, STATES.SPEAKING, STATES.PROCESSING, STATES.RESPONDING, STATES.CONNECTING];
-  stopBtn.style.display = activeStates.includes(currentState) ? '' : 'none';
-  // Show mic indicator during active conversation
-  micIndicator.style.display = activeStates.includes(currentState) ? '' : 'none';
+  const isActive = activeStates.includes(currentState);
+  micToggleBtn.style.display = isActive ? '' : 'none';
+  stopBtn.style.display = isActive ? '' : 'none';
+  micIndicator.style.display = isActive ? '' : 'none';
+  updateMicToggleBtn();
 }
 
 // --- Token Management ---
@@ -191,6 +205,21 @@ async function connectWebRTC() {
   // Data channel for events
   dataChannel = pc.createDataChannel('oai-events');
   dataChannel.onmessage = handleDataChannelMessage;
+  dataChannel.onopen = () => {
+    // Increase VAD silence threshold to avoid premature responses
+    dataChannel.send(JSON.stringify({
+      type: 'session.update',
+      session: {
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.6,              // Higher = less sensitive (default ~0.5)
+          prefix_padding_ms: 500,      // Keep 500ms audio before speech
+          silence_duration_ms: 1000,   // Wait 1s of silence before triggering (default ~500ms)
+        }
+      }
+    }));
+    console.log('VAD config sent: threshold=0.6, silence=1000ms');
+  };
 
   // Create and send SDP offer
   const offer = await pc.createOffer();
@@ -294,15 +323,14 @@ function handleDataChannelMessage(event) {
         break;
 
       case 'response.done':
-        // Turn complete — log it and go back to listening
+        // Turn complete — go to LISTENING but keep mic muted
         finalizeTurn();
-        // Force back to LISTENING and unmute regardless of current state
-        // This handles cases where state didn't reach RESPONDING (e.g., event name mismatch)
         if (currentState === STATES.RESPONDING || currentState === STATES.PROCESSING) {
           currentState = STATES.LISTENING;
-          setMicMuted(false);
+          micUserMuted = true;
+          setMicMuted(true);
           updateUI();
-          console.log('State: → LISTENING (response.done, mic unmuted)');
+          console.log('State: → LISTENING (response.done, mic auto-muted)');
         }
         break;
 
@@ -424,6 +452,12 @@ stopBtn.addEventListener('click', () => {
   currentState = STATES.IDLE;
   updateUI();
   console.log('Conversation ended by user.');
+});
+micToggleBtn.addEventListener('click', () => {
+  micUserMuted = !micUserMuted;
+  setMicMuted(micUserMuted);
+  updateMicToggleBtn();
+  console.log('Mic toggled:', micUserMuted ? 'OFF' : 'ON');
 });
 
 // --- Init ---
