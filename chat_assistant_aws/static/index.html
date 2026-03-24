@@ -1,0 +1,112 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>100K Whys?</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+      max-width: 600px;
+      width: 100%;
+    }
+    h1 { font-size: 2rem; margin-bottom: 1rem; }
+
+    /* Avatar */
+    .avatar {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      margin: 1rem auto;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.5rem;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    .avatar.idle { background: rgba(255,255,255,0.15); }
+    .avatar.connecting { animation: pulse 1.5s infinite; }
+    .avatar.listening { background: rgba(76,175,80,0.4); box-shadow: 0 0 30px rgba(76,175,80,0.5); }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎓 100K Whys?</h1>
+    <div id="avatar" class="avatar idle">🤖</div>
+    <p id="status-text" style="margin:0.5rem 0; font-size:1rem; opacity:0.9;">點擊下方按鈕開始對話</p>
+    <div id="mic-indicator" aria-live="polite" style="display:none; font-size:1.5rem; margin:0.5rem 0;">
+      <span id="mic-icon">🎙️</span>
+      <span id="mic-label" style="font-size:0.9rem; vertical-align:middle; margin-left:0.3rem;">Mic On</span>
+    </div>
+
+    <button id="start-btn" aria-label="Start talking to AI tutor"
+      style="font-size:1.8rem; padding:1.5rem 3.5rem; border:none; border-radius:50px;
+             background:#4CAF50; color:#fff; cursor:pointer; min-width:280px;
+             min-height:80px; touch-action:manipulation; font-weight:bold;
+             box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;">
+      🎤 Start Chat
+    </button>
+
+    <button id="retry-btn" aria-label="Retry connection" style="display:none;
+      font-size:1.2rem; padding:0.8rem 2rem; border:none; border-radius:50px;
+      background:#FF9800; color:#fff; cursor:pointer; min-width:180px;
+      min-height:50px; touch-action:manipulation; font-weight:bold;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-top:1rem;">
+      🔄 Retry
+    </button>
+
+    <button id="stop-btn" aria-label="End conversation" style="display:none;
+      font-size:1.2rem; padding:0.8rem 2rem; border:none; border-radius:50px;
+      background:#f44336; color:#fff; cursor:pointer; min-width:180px;
+      min-height:50px; touch-action:manipulation; font-weight:bold;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-top:1rem;">
+      ⏹ End Chat
+    </button>
+
+    <button id="mic-toggle-btn" aria-label="Toggle microphone" style="display:none;
+      font-size:1.8rem; padding:1.5rem 3.5rem; border:none; border-radius:50px;
+      background:#2196F3; color:#fff; cursor:pointer; min-width:280px;
+      min-height:80px; touch-action:manipulation; font-weight:bold;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;">
+      🎤 Mic ON
+    </button>
+
+    <div id="unsupported" style="display:none; background:rgba(255,0,0,0.2);
+      padding:1.5rem; border-radius:12px; margin-top:1.5rem;" role="alert">
+      <p>😔 Your browser doesn't support voice features</p>
+      <p style="font-size:0.9rem; margin-top:0.5rem;">Please use Chrome, Safari, or Edge</p>
+    </div>
+
+    <div id="transcript" style="margin-top:1.5rem; text-align:left; max-height:300px;
+      overflow-y:auto; background:rgba(255,255,255,0.1); border-radius:12px;
+      padding:1rem; display:none; width:80%; margin-left:auto; margin-right:auto;">
+      <p style="font-size:0.8rem; opacity:0.7;">Transcript</p>
+      <div id="transcript-content"></div>
+    </div>
+  </div>
+
+  <style>
+    .avatar.speaking { background: rgba(33,150,243,0.4); box-shadow: 0 0 30px rgba(33,150,243,0.5); animation: speak 0.8s infinite alternate; }
+    .avatar.processing { background: rgba(255,193,7,0.4); animation: pulse 1s infinite; }
+    .avatar.responding { background: rgba(156,39,176,0.4); box-shadow: 0 0 30px rgba(156,39,176,0.5); animation: speak 0.6s infinite alternate; }
+    .avatar.error { background: rgba(244,67,54,0.3); }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+    @keyframes speak { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
+    button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    button:active { transform: translateY(0); }
+  </style>
+
+  <script src="app.js"></script>
+</body>
+</html>

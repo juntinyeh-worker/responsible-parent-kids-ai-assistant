@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Child Voice Tutor - ALB + ECS Fargate stack
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Public subnets for ALB and Fargate tasks (at least 2 AZs)
+  ImageUri:
+    Type: String
+    Description: ECR image URI (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/child-voice-tutor:latest)
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: OpenAI API key (legacy — prefer SecretsName)
+  SecretsName:
+    Type: String
+    Default: openai-api-key
+    Description: Secrets Manager secret name for OpenAI API key
+  S3LogBucket:
+    Type: String
+    Default: ''
+    Description: S3 bucket for conversation logs (optional, leave empty to use local filesystem)
+  CognitoDomain:
+    Type: String
+    Default: ''
+    Description: Cognito hosted UI domain
+  CognitoClientId:
+    Type: String
+    Default: ''
+    Description: Cognito User Pool Client ID
+  CognitoClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Cognito User Pool Client Secret
+  CognitoRedirectUri:
+    Type: String
+    Default: ''
+    Description: Cognito OAuth2 redirect URI
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: Number of Fargate tasks
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: CPU units (256 = 0.25 vCPU)
+  ContainerMemory:
+    Type: Number
+    Default: 512
+    Description: Memory in MB
+
+Conditions:
+  HasS3Bucket: !Not [!Equals [!Ref S3LogBucket, '']]
+
+Resources:
+  # --- Security Groups ---
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB security group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS tasks security group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  # --- ALB ---
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: child-voice-tutor-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cvt-tg
+      Port: 8000
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # --- ECS Cluster ---
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: child-voice-tutor
+
+  # --- IAM ---
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'cvt-task-execution-role-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'cvt-task-role-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretsName}-*'
+        - !If
+          - HasS3Bucket
+          - PolicyName: S3LogAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                  Resource: !Sub 'arn:aws:s3:::${S3LogBucket}/*'
+          - !Ref AWS::NoValue
+
+  # --- CloudWatch Log Group ---
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/child-voice-tutor
+      RetentionInDays: 30
+
+  # --- Task Definition ---
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: child-voice-tutor
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: app
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: DEPLOY_ENV
+              Value: aws
+            - Name: SECRETS_NAME
+              Value: !Ref SecretsName
+            - Name: LOCAL_LOG_DIR
+              Value: /app/logs
+            - Name: S3_LOG_BUCKET
+              Value: !Ref S3LogBucket
+            - Name: S3_LOG_PREFIX
+              Value: conversation-logs
+            - Name: COGNITO_DOMAIN
+              Value: !Ref CognitoDomain
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoClientId
+            - Name: COGNITO_CLIENT_SECRET
+              Value: !Ref CognitoClientSecret
+            - Name: COGNITO_REDIRECT_URI
+              Value: !Ref CognitoRedirectUri
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # --- ECS Service ---
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: child-voice-tutor-svc
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - ContainerName: app
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ALBTargetGroup
+
+Outputs:
+  ALBDnsName:
+    Description: ALB DNS name — open this in your browser
+    Value: !GetAtt ALB.DNSName
+  ClusterName:
+    Value: !Ref ECSCluster
+  ServiceName:
+    Value: !GetAtt ECSService.Name
