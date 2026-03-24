@@ -214,8 +214,10 @@ function playAudioChunk(b64Audio) {
 // --- WebSocket Connection ---
 
 async function connectWebSocket() {
+  // Same origin — CloudFront handles wss:// upgrade to ALB ws://
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${proto}//${location.host}/api/ws/audio`;
+  console.log('WebSocket URL:', wsUrl);
 
   ws = new WebSocket(wsUrl);
 

@@ -19,7 +19,10 @@ from aws_sdk_bedrock_runtime.models import (
     BidirectionalInputPayloadPart,
 )
 from aws_sdk_bedrock_runtime.config import Config
+from smithy_aws_core.identity.chain import create_default_chain
+from smithy_aws_core.identity.container import ContainerCredentialsResolver
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
+from smithy_http.aio.crt import AWSCRTHTTPClient
 
 from prompts import SYSTEM_PROMPT
 
@@ -45,10 +48,19 @@ class NovaSonicSession:
         self.audio_content_name = str(uuid.uuid4())
 
     def _initialize_client(self):
+        import os
+        http_client = AWSCRTHTTPClient()
+        # ECS Fargate: use container credentials (Task Role)
+        # Local dev: use environment variables
+        if os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"):
+            resolver = ContainerCredentialsResolver(http_client=http_client)
+        else:
+            resolver = EnvironmentCredentialsResolver()
+
         config = Config(
             endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
             region=self.region,
-            aws_credentials_identity_resolver=EnvironmentCredentialsResolver(),
+            aws_credentials_identity_resolver=resolver,
         )
         self.client = BedrockRuntimeClient(config=config)
 

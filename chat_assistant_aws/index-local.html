@@ -1,0 +1,154 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Test - Nova Sonic</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+    button { font-size: 1.2rem; padding: 0.8rem 1.5rem; margin: 0.5rem; cursor: pointer; border: none; border-radius: 8px; color: #fff; }
+    #connect-btn { background: #4CAF50; }
+    #mic-btn { background: #2196F3; }
+    #stop-btn { background: #f44336; }
+    #log { background: #f5f5f5; padding: 1rem; border-radius: 8px; max-height: 400px; overflow-y: auto; font-size: 0.85rem; font-family: monospace; white-space: pre-wrap; margin-top: 1rem; }
+    .status { font-size: 1.1rem; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>🎓 Nova Sonic Local Test</h1>
+  <p class="status">Status: <span id="status">Disconnected</span></p>
+  <p class="status">Mic: <span id="mic-status">OFF</span></p>
+  <div>
+    <button id="connect-btn" onclick="connect()">Connect</button>
+    <button id="mic-btn" onclick="toggleMic()">Toggle Mic</button>
+    <button id="stop-btn" onclick="disconnect()">Disconnect</button>
+  </div>
+  <div id="log"></div>
+
+  <script>
+    const WS_URL = 'ws://localhost:8000/api/ws/audio';
+    const INPUT_RATE = 16000;
+    const OUTPUT_RATE = 24000;
+    const BUFFER_SIZE = 4096;
+
+    let ws = null;
+    let micStream = null;
+    let audioCtx = null;
+    let processor = null;
+    let playCtx = null;
+    let playNextTime = 0;
+    let micMuted = true;
+
+    function log(msg) {
+      const el = document.getElementById('log');
+      const ts = new Date().toLocaleTimeString();
+      el.textContent = `[${ts}] ${msg}\n` + el.textContent;
+    }
+
+    function setStatus(s) { document.getElementById('status').textContent = s; }
+    function setMicStatus(s) { document.getElementById('mic-status').textContent = s; }
+
+    async function connect() {
+      log('Connecting to ' + WS_URL);
+      setStatus('Connecting...');
+
+      // Start mic first
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioCtx = new AudioContext({ sampleRate: 48000 });
+      const source = audioCtx.createMediaStreamSource(micStream);
+      processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      processor.onaudioprocess = (e) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN || micMuted) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const resampled = resample(input, audioCtx.sampleRate, INPUT_RATE);
+        const int16 = float32ToInt16(resampled);
+        const b64 = arrayBufferToBase64(int16.buffer);
+        ws.send(JSON.stringify({ type: 'audio', data: b64 }));
+      };
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      micMuted = true;
+      setMicStatus('OFF (toggle to start)');
+
+      // Connect WebSocket
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => { log('WebSocket connected'); setStatus('Connected'); };
+      ws.onclose = () => { log('WebSocket closed'); setStatus('Disconnected'); };
+      ws.onerror = (e) => { log('WebSocket error: ' + e.type); setStatus('Error'); };
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'audio') {
+          log('Audio chunk received (' + msg.data.length + ' b64 chars)');
+          playAudio(msg.data);
+        } else if (msg.type === 'text') {
+          log(`Text [${msg.role}]: ${msg.content}`);
+        } else if (msg.type === 'event') {
+          log('Event: ' + JSON.stringify(msg));
+        }
+      };
+    }
+
+    function toggleMic() {
+      micMuted = !micMuted;
+      if (micStream) micStream.getAudioTracks().forEach(t => t.enabled = !micMuted);
+      setMicStatus(micMuted ? 'OFF' : 'ON — speak now');
+      log('Mic ' + (micMuted ? 'muted' : 'unmuted'));
+    }
+
+    function disconnect() {
+      if (ws) { try { ws.send(JSON.stringify({type:'stop'})); } catch(e){} ws.close(); ws = null; }
+      if (processor) { processor.disconnect(); processor = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+      if (playCtx) { playCtx.close(); playCtx = null; playNextTime = 0; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      setStatus('Disconnected');
+      log('Disconnected');
+    }
+
+    function playAudio(b64) {
+      const raw = atob(b64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const int16 = new Int16Array(bytes.buffer);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
+
+      if (!playCtx) { playCtx = new AudioContext({ sampleRate: OUTPUT_RATE }); playNextTime = 0; }
+      const buf = playCtx.createBuffer(1, float32.length, OUTPUT_RATE);
+      buf.getChannelData(0).set(float32);
+      const src = playCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(playCtx.destination);
+      const now = playCtx.currentTime;
+      if (playNextTime < now) playNextTime = now + 0.01;
+      src.start(playNextTime);
+      playNextTime += buf.duration;
+    }
+
+    function resample(data, from, to) {
+      if (from === to) return data;
+      const ratio = from / to;
+      const len = Math.round(data.length / ratio);
+      const out = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const idx = i * ratio;
+        const lo = Math.floor(idx), hi = Math.min(lo + 1, data.length - 1);
+        out[i] = data[lo] * (1 - (idx - lo)) + data[hi] * (idx - lo);
+      }
+      return out;
+    }
+
+    function float32ToInt16(f) {
+      const i = new Int16Array(f.length);
+      for (let j = 0; j < f.length; j++) { const s = Math.max(-1, Math.min(1, f[j])); i[j] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
+      return i;
+    }
+
+    function arrayBufferToBase64(buf) {
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+  </script>
+</body>
+</html>

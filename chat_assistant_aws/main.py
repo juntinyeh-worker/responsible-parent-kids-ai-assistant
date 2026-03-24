@@ -12,7 +12,8 @@ from config import config
 from session import NovaSonicSession
 from logging_service import ConversationLogEntry, write_log
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+import os
+logging.basicConfig(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")), format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -66,8 +67,11 @@ async def audio_websocket(ws: WebSocket):
     response_task = None
 
     try:
+        logger.info("Starting Nova Sonic session...")
         await session.start()
+        logger.info("Nova Sonic session started, starting audio input...")
         await session.start_audio_input()
+        logger.info("Audio input started, ready for audio chunks")
 
         # Callbacks for Nova Sonic responses → forward to browser
         async def on_audio(b64_audio):
@@ -95,13 +99,18 @@ async def audio_websocket(ws: WebSocket):
         )
 
         # Read audio from browser and forward to Nova Sonic
+        chunk_count = 0
         while True:
             msg = await ws.receive_json()
             msg_type = msg.get("type", "")
 
             if msg_type == "audio":
+                chunk_count += 1
+                if chunk_count <= 3 or chunk_count % 100 == 0:
+                    logger.info(f"Audio chunk #{chunk_count} received ({len(msg.get('data',''))} b64 chars)")
                 await session.send_audio_chunk(msg["data"])
             elif msg_type == "stop":
+                logger.info(f"Stop received after {chunk_count} chunks")
                 break
 
     except WebSocketDisconnect:
