@@ -1,0 +1,195 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - 100K Whys?</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    .login-box {
+      text-align: center;
+      padding: 2rem;
+      max-width: 340px;
+      width: 90%;
+      background: rgba(255,255,255,0.12);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 0.3rem; }
+    .subtitle { font-size: 0.9rem; opacity: 0.7; margin-bottom: 1.5rem; }
+    .display {
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      font-size: 2rem;
+      letter-spacing: 0.5em;
+      min-height: 3rem;
+      margin-bottom: 1rem;
+      font-family: monospace;
+    }
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 1rem;
+    }
+    .numpad button {
+      font-size: 1.5rem;
+      padding: 1rem;
+      border: none;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.15s;
+    }
+    .numpad button:hover { background: rgba(255,255,255,0.3); }
+    .numpad button:active { background: rgba(255,255,255,0.4); }
+    .numpad .del { background: rgba(244,67,54,0.3); }
+    .login-btn {
+      width: 100%;
+      font-size: 1.3rem;
+      font-weight: bold;
+      padding: 1rem;
+      border: none;
+      border-radius: 12px;
+      background: #4CAF50;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .login-btn:hover { background: #43a047; }
+    .login-btn:disabled { background: #888; cursor: not-allowed; }
+    .error { margin-top: 0.8rem; color: #ff8a80; font-size: 0.9rem; min-height: 1.2em; }
+    .spinner { display: none; margin-top: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>🎓 100K Whys?</h1>
+    <p class="subtitle">Enter your serial number</p>
+    <div class="display" id="display">&#8203;</div>
+    <div class="numpad">
+      <button onclick="press('1')">1</button>
+      <button onclick="press('2')">2</button>
+      <button onclick="press('3')">3</button>
+      <button onclick="press('4')">4</button>
+      <button onclick="press('5')">5</button>
+      <button onclick="press('6')">6</button>
+      <button onclick="press('7')">7</button>
+      <button onclick="press('8')">8</button>
+      <button onclick="press('9')">9</button>
+      <button class="del" onclick="del()">⌫</button>
+      <button onclick="press('0')">0</button>
+      <button class="del" onclick="clear()">C</button>
+    </div>
+    <button class="login-btn" id="login-btn" onclick="login()">Login</button>
+    <div class="spinner" id="spinner">⏳ Verifying...</div>
+    <div class="error" id="error"></div>
+  </div>
+  <script>
+    // Cognito config — will be replaced by deploy script or hardcoded after stack deploy
+    const COGNITO_REGION = 'us-east-1';
+    const COGNITO_CLIENT_ID = '2e8s215t9bq33vq5gjp6qq5o99';
+    const LOGIN_EMAIL = 'test@example.com';
+    const PASSWORD_PREFIX = 'Test@';
+
+    let code = '';
+    const display = document.getElementById('display');
+    const errorEl = document.getElementById('error');
+    const spinner = document.getElementById('spinner');
+    const loginBtn = document.getElementById('login-btn');
+
+    function press(n) {
+      if (code.length >= 10) return;
+      code += n;
+      display.textContent = '•'.repeat(code.length);
+      errorEl.textContent = '';
+    }
+    function del() { code = code.slice(0, -1); display.textContent = code.length ? '•'.repeat(code.length) : '\u200B'; }
+    function clear() { code = ''; display.textContent = '\u200B'; errorEl.textContent = ''; }
+
+    // Listen for physical keyboard
+    document.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9') press(e.key);
+      else if (e.key === 'Backspace') del();
+      else if (e.key === 'Enter') login();
+    });
+
+    async function login() {
+      if (!code) { errorEl.textContent = 'Please enter a serial number'; return; }
+      errorEl.textContent = '';
+      loginBtn.disabled = true;
+      spinner.style.display = '';
+
+      const password = PASSWORD_PREFIX + code;
+      try {
+        const token = await cognitoAuth(LOGIN_EMAIL, password);
+        // Set auth cookie and redirect
+        document.cookie = 'cvt-authed=1; path=/; secure; samesite=lax; max-age=3600';
+        document.cookie = 'cvt-token=' + token + '; path=/; secure; samesite=lax; max-age=3600';
+        window.location.href = '/';
+      } catch (err) {
+        errorEl.textContent = 'Invalid serial number';
+        console.error('Login error:', err);
+      } finally {
+        loginBtn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    }
+
+    async function cognitoAuth(username, password) {
+      const endpoint = 'https://cognito-idp.' + COGNITO_REGION + '.amazonaws.com/';
+      let resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+        },
+        body: JSON.stringify({
+          AuthFlow: 'USER_PASSWORD_AUTH',
+          ClientId: COGNITO_CLIENT_ID,
+          AuthParameters: { USERNAME: username, PASSWORD: password },
+        }),
+      });
+      let data = await resp.json();
+
+      if (data.__type && (data.__type.includes('NotAuthorized') || data.__type.includes('UserNotFound'))) {
+        throw new Error('Invalid credentials');
+      }
+
+      // Handle NEW_PASSWORD_REQUIRED
+      if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-amz-json-1.1',
+            'X-Amz-Target': 'AWSCognitoIdentityProviderService.RespondToAuthChallenge',
+          },
+          body: JSON.stringify({
+            ChallengeName: 'NEW_PASSWORD_REQUIRED',
+            ClientId: COGNITO_CLIENT_ID,
+            Session: data.Session,
+            ChallengeResponses: { USERNAME: username, NEW_PASSWORD: password },
+          }),
+        });
+        data = await resp.json();
+      }
+
+      const idToken = data.AuthenticationResult && data.AuthenticationResult.IdToken;
+      if (!idToken) throw new Error(data.__type || 'Auth failed');
+      return idToken;
+    }
+  </script>
+</body>
+</html>

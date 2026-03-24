@@ -291,6 +291,61 @@ Resources:
             ResponseCode: 200
             ResponsePagePath: /index.html
 
+  # --- Cognito ---
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AWS::StackName}-web'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # --- CloudFront Function for auth gate ---
+  AuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub '${AWS::StackName}-auth'
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          var cookies = parseCookies(request.headers.cookie);
+          if (uri.startsWith('/api/')) { return request; }
+          if (uri === '/login.html') { return request; }
+          if (uri.match(/\.(js|css|svg|png|jpg|ico|woff2?)$/)) { return request; }
+          if (cookies['cvt-authed'] === '1') { return request; }
+          return { statusCode: 302, statusDescription: 'Found', headers: { location: { value: '/login.html' } } };
+        }
+        function parseCookies(h) {
+          var c = {};
+          if (!h || !h.value) return c;
+          h.value.split(';').forEach(function(s) {
+            var p = s.trim().split('=');
+            if (p.length >= 2) c[p[0]] = p.slice(1).join('=');
+          });
+          return c;
+        }
+      FunctionConfig:
+        Comment: Auth gate - redirect to login
+        Runtime: cloudfront-js-2.0
+
 Outputs:
   CloudFrontURL:
     Value: !Sub 'https://${Distribution.DomainName}'
@@ -300,3 +355,9 @@ Outputs:
     Value: !Ref StaticBucket
   ALBDnsName:
     Value: !GetAtt ALB.DNSName
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoRegion:
+    Value: !Ref AWS::Region
