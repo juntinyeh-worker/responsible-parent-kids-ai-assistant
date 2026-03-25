@@ -1,68 +1,37 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Child Voice Tutor - ALB + ECS Fargate stack
+Description: Child Voice Tutor (OpenAI) - CloudFront + ALB + ECS + Cognito (single stack)
 
 Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC to deploy into
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Public subnets for ALB and Fargate tasks (at least 2 AZs)
   ImageUri:
     Type: String
-    Description: ECR image URI (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/child-voice-tutor:latest)
-  OpenAIApiKey:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: OpenAI API key (legacy — prefer SecretsName)
   SecretsName:
     Type: String
     Default: openai-api-key
-    Description: Secrets Manager secret name for OpenAI API key
   S3LogBucket:
     Type: String
     Default: ''
-    Description: S3 bucket for conversation logs (optional, leave empty to use local filesystem)
-  CognitoDomain:
-    Type: String
-    Default: ''
-    Description: Cognito hosted UI domain
-  CognitoClientId:
-    Type: String
-    Default: ''
-    Description: Cognito User Pool Client ID
-  CognitoClientSecret:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: Cognito User Pool Client Secret
-  CognitoRedirectUri:
-    Type: String
-    Default: ''
-    Description: Cognito OAuth2 redirect URI
   DesiredCount:
     Type: Number
     Default: 1
-    Description: Number of Fargate tasks
   ContainerCpu:
     Type: Number
     Default: 256
-    Description: CPU units (256 = 0.25 vCPU)
   ContainerMemory:
     Type: Number
     Default: 512
-    Description: Memory in MB
 
 Conditions:
   HasS3Bucket: !Not [!Equals [!Ref S3LogBucket, '']]
 
 Resources:
-  # --- Security Groups ---
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ALB security group
+      GroupDescription: ALB SG
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -73,7 +42,7 @@ Resources:
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ECS tasks security group
+      GroupDescription: ECS SG
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -81,7 +50,6 @@ Resources:
           ToPort: 8000
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
-  # --- ALB ---
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -89,8 +57,7 @@ Resources:
       Scheme: internet-facing
       Type: application
       Subnets: !Ref SubnetIds
-      SecurityGroups:
-        - !Ref ALBSecurityGroup
+      SecurityGroups: [!Ref ALBSecurityGroup]
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -101,9 +68,6 @@ Resources:
       VpcId: !Ref VpcId
       TargetType: ip
       HealthCheckPath: /api/health
-      HealthCheckIntervalSeconds: 30
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
 
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -115,23 +79,19 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref ALBTargetGroup
 
-  # --- ECS Cluster ---
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Ref AWS::StackName
 
-  # --- IAM ---
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'cvt-task-execution-role-${AWS::Region}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
+            Principal: { Service: ecs-tasks.amazonaws.com }
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
@@ -139,13 +99,11 @@ Resources:
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'cvt-task-role-${AWS::Region}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
+            Principal: { Service: ecs-tasks.amazonaws.com }
             Action: sts:AssumeRole
       Policies:
         - PolicyName: SecretsManagerAccess
@@ -163,20 +121,16 @@ Resources:
               Version: '2012-10-17'
               Statement:
                 - Effect: Allow
-                  Action:
-                    - s3:PutObject
-                    - s3:GetObject
+                  Action: [s3:PutObject, s3:GetObject]
                   Resource: !Sub 'arn:aws:s3:::${S3LogBucket}/*'
           - !Ref AWS::NoValue
 
-  # --- CloudWatch Log Group ---
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${AWS::StackName}'
       RetentionInDays: 30
 
-  # --- Task Definition ---
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -184,8 +138,7 @@ Resources:
       Cpu: !Ref ContainerCpu
       Memory: !Ref ContainerMemory
       NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
+      RequiresCompatibilities: [FARGATE]
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt TaskRole.Arn
       ContainerDefinitions:
@@ -198,6 +151,8 @@ Resources:
           Environment:
             - Name: DEPLOY_ENV
               Value: aws
+            - Name: STACK_NAME
+              Value: !Ref AWS::StackName
             - Name: SECRETS_NAME
               Value: !Ref SecretsName
             - Name: LOCAL_LOG_DIR
@@ -206,14 +161,6 @@ Resources:
               Value: !Ref S3LogBucket
             - Name: S3_LOG_PREFIX
               Value: conversation-logs
-            - Name: COGNITO_DOMAIN
-              Value: !Ref CognitoDomain
-            - Name: COGNITO_CLIENT_ID
-              Value: !Ref CognitoClientId
-            - Name: COGNITO_CLIENT_SECRET
-              Value: !Ref CognitoClientSecret
-            - Name: COGNITO_REDIRECT_URI
-              Value: !Ref CognitoRedirectUri
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -221,7 +168,6 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
 
-  # --- ECS Service ---
   ECSService:
     Type: AWS::ECS::Service
     DependsOn: ALBListener
@@ -235,18 +181,160 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
           Subnets: !Ref SubnetIds
-          SecurityGroups:
-            - !Ref ECSSecurityGroup
+          SecurityGroups: [!Ref ECSSecurityGroup]
       LoadBalancers:
         - ContainerName: app
           ContainerPort: 8000
           TargetGroupArn: !Ref ALBTargetGroup
 
+  # --- CloudFront ---
+  StaticBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-static-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  StaticBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${StaticBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+  OAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Comment: !Sub '${AWS::StackName}'
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt StaticBucket.RegionalDomainName
+            OriginAccessControlId: !Ref OAC
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          - Id: ALBOrigin
+            DomainName: !GetAtt ALB.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt AuthFunction.FunctionARN
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  # --- Cognito ---
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AWS::StackName}-web'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # --- CloudFront Function for auth gate ---
+  AuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub '${AWS::StackName}-auth'
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          var cookies = parseCookies(request.headers.cookie);
+          if (uri.startsWith('/api/')) { return request; }
+          if (uri === '/login.html') { return request; }
+          if (uri.match(/\.(js|css|svg|png|jpg|ico|woff2?)$/)) { return request; }
+          if (cookies['cvt-authed'] === '1') { return request; }
+          return { statusCode: 302, statusDescription: 'Found', headers: { location: { value: '/login.html' } } };
+        }
+        function parseCookies(h) {
+          var c = {};
+          if (!h || !h.value) return c;
+          h.value.split(';').forEach(function(s) {
+            var p = s.trim().split('=');
+            if (p.length >= 2) c[p[0]] = p.slice(1).join('=');
+          });
+          return c;
+        }
+      FunctionConfig:
+        Comment: Auth gate - redirect to login
+        Runtime: cloudfront-js-2.0
+
 Outputs:
+  CloudFrontURL:
+    Value: !Sub 'https://${Distribution.DomainName}'
+  DistributionId:
+    Value: !Ref Distribution
+  StaticBucket:
+    Value: !Ref StaticBucket
   ALBDnsName:
-    Description: ALB DNS name — open this in your browser
     Value: !GetAtt ALB.DNSName
-  ClusterName:
-    Value: !Ref ECSCluster
-  ServiceName:
-    Value: !GetAtt ECSService.Name
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoRegion:
+    Value: !Ref AWS::Region
