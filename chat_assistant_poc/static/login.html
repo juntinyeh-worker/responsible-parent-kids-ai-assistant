@@ -75,10 +75,10 @@
     <div class="error" id="error" role="alert"></div>
   </div>
   <script>
-    // Cognito config (public client, no secret)
-    const COGNITO_REGION = 'ap-east-2';
-    const COGNITO_CLIENT_ID = '2e9963bvrr1hf2646r82utcp9p';
-    const LOGIN_EMAIL = 'testuser@test.com';
+    // Cognito config — injected by deploy-frontend.sh at deploy time
+    const COGNITO_REGION = '{{COGNITO_REGION}}';
+    const COGNITO_CLIENT_ID = '{{COGNITO_CLIENT_ID}}';
+    const LOGIN_EMAIL = '{{LOGIN_EMAIL}}';
     const PASSWORD_PREFIX = 'TempPass';
 
     const form = document.getElementById('login-form');

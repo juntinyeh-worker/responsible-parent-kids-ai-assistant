@@ -10,10 +10,6 @@ Parameters:
     Default: cvt-cf-origin-verify-2026
     NoEcho: true
     Description: Shared secret header value to lock ALB to CloudFront only
-  CognitoCallbackPath:
-    Type: String
-    Default: /auth/callback
-    Description: OAuth2 callback path
   AdminEmail:
     Type: String
     Description: Email for the initial admin user in Cognito
@@ -68,34 +64,15 @@ Resources:
           Required: true
           Mutable: true
 
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      Domain: !Sub '${AWS::StackName}-${AWS::AccountId}'
-      UserPoolId: !Ref UserPool
-
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       ClientName: !Sub '${AWS::StackName}-web'
       UserPoolId: !Ref UserPool
-      GenerateSecret: true
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
-      SupportedIdentityProviders:
-        - COGNITO
-      CallbackURLs:
-        - !Sub 'https://${CloudFrontDistribution.DomainName}${CognitoCallbackPath}'
-      LogoutURLs:
-        - !Sub 'https://${CloudFrontDistribution.DomainName}/'
+      GenerateSecret: false
       ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-        - ALLOW_USER_SRP_AUTH
 
   AdminUser:
     Type: AWS::Cognito::UserPoolUser
@@ -116,45 +93,27 @@ Resources:
       Name: !Sub '${AWS::StackName}-auth'
       AutoPublish: true
       FunctionCode: |
-        var defined = false;
         function handler(event) {
           var request = event.request;
-          var headers = request.headers;
-          var cookies = parseCookies(headers.cookie);
-
-          // Allow API calls and auth callback through
-          if (request.uri.startsWith('/api/') || request.uri.startsWith('/auth/')) {
-            return request;
-          }
-
-          // Check for session cookie
-          var token = cookies['cvt-session'];
-          if (token) {
-            return request;
-          }
-
-          // No session — redirect to Cognito hosted UI
-          var response = {
-            statusCode: 302,
-            statusDescription: 'Found',
-            headers: {
-              location: { value: '{{COGNITO_LOGIN_URL}}' }
-            }
-          };
-          return response;
+          var uri = request.uri;
+          var cookies = parseCookies(request.headers.cookie);
+          if (uri.startsWith('/api/') || uri.startsWith('/auth/')) { return request; }
+          if (uri === '/login.html') { return request; }
+          if (uri.match(/\.(js|css|svg|png|jpg|ico|woff2?)$/)) { return request; }
+          if (cookies['cvt-authed'] === '1') { return request; }
+          return { statusCode: 302, statusDescription: 'Found', headers: { location: { value: '/login.html' } } };
         }
-
-        function parseCookies(cookieHeader) {
-          var cookies = {};
-          if (!cookieHeader || !cookieHeader.value) return cookies;
-          cookieHeader.value.split(';').forEach(function(c) {
-            var parts = c.trim().split('=');
-            if (parts.length >= 2) cookies[parts[0]] = parts.slice(1).join('=');
+        function parseCookies(h) {
+          var c = {};
+          if (!h || !h.value) return c;
+          h.value.split(';').forEach(function(s) {
+            var p = s.trim().split('=');
+            if (p.length >= 2) c[p[0]] = p.slice(1).join('=');
           });
-          return cookies;
+          return c;
         }
       FunctionConfig:
-        Comment: Cognito auth check for CloudFront
+        Comment: Auth gate - redirect to login
         Runtime: cloudfront-js-2.0
 
   # --- CloudFront OAC ---
@@ -213,13 +172,6 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
             OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
-          # Auth callback → ALB
-          - PathPattern: /auth/*
-            TargetOriginId: ALBOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
-            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
 
         CustomErrorResponses:
           - ErrorCode: 403
@@ -241,9 +193,7 @@ Outputs:
     Value: !Ref UserPool
   UserPoolClientId:
     Value: !Ref UserPoolClient
-  CognitoLoginUrl:
-    Value: !Sub 'https://${AWS::StackName}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${UserPoolClient}&response_type=code&scope=openid+email+profile&redirect_uri=https://${CloudFrontDistribution.DomainName}${CognitoCallbackPath}'
-  CognitoDomain:
-    Value: !Sub '${AWS::StackName}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com'
+  CognitoRegion:
+    Value: !Ref AWS::Region
   ALBOriginSecret:
     Value: !Ref ALBOriginSecret

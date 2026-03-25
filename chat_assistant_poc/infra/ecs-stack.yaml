@@ -85,7 +85,7 @@ Resources:
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: child-voice-tutor-alb
+      Name: !Sub '${AWS::StackName}-alb'
       Scheme: internet-facing
       Type: application
       Subnets: !Ref SubnetIds
@@ -95,7 +95,7 @@ Resources:
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: cvt-tg
+      Name: !Sub '${AWS::StackName}-tg'
       Port: 8000
       Protocol: HTTP
       VpcId: !Ref VpcId
@@ -119,7 +119,7 @@ Resources:
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: child-voice-tutor
+      ClusterName: !Ref AWS::StackName
 
   # --- IAM ---
   TaskExecutionRole:
@@ -173,14 +173,14 @@ Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /ecs/child-voice-tutor
+      LogGroupName: !Sub '/ecs/${AWS::StackName}'
       RetentionInDays: 30
 
   # --- Task Definition ---
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: child-voice-tutor
+      Family: !Ref AWS::StackName
       Cpu: !Ref ContainerCpu
       Memory: !Ref ContainerMemory
       NetworkMode: awsvpc
@@ -226,7 +226,7 @@ Resources:
     Type: AWS::ECS::Service
     DependsOn: ALBListener
     Properties:
-      ServiceName: child-voice-tutor-svc
+      ServiceName: !Sub '${AWS::StackName}-svc'
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref TaskDefinition
       DesiredCount: !Ref DesiredCount

@@ -43,6 +43,7 @@
 <body>
   <div class="container">
     <h1>🎓 十萬個為什麼？</h1>
+    <a href="#" onclick="document.cookie='cvt-authed=;path=/;max-age=0';document.cookie='cvt-session=;path=/;max-age=0';location.href='/login.html'" style="display:inline-block;font-size:0.85rem;padding:0.4rem 1.2rem;border:1px solid rgba(255,255,255,0.4);border-radius:20px;text-decoration:none;color:#fff;opacity:0.7;margin-top:0.3rem;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">登出</a>
     <div id="avatar" class="avatar idle">🤖</div>
     <p id="status-text" style="margin:0.5rem 0; font-size:1rem; opacity:0.9;">點擊下方按鈕開始對話</p>
     <div id="mic-indicator" aria-live="polite" style="display:none; font-size:1.5rem; margin:0.5rem 0;">
@@ -107,6 +108,12 @@
     button:active { transform: translateY(0); }
   </style>
 
+  <script>
+    // Auth gate: redirect to login if no session cookie
+    if (!document.cookie.split(';').some(c => c.trim().startsWith('cvt-authed=1'))) {
+      window.location.replace('/login.html');
+    }
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
