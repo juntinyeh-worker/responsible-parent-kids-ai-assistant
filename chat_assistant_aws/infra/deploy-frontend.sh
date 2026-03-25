@@ -155,7 +155,7 @@ aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths "/*" 
 echo "🔒 Locking ALB to CloudFront only..."
 
 # Find the ALB ARN and listener ARN from the ECS stack
-ALB_ARN=$(aws elbv2 describe-load-balancers --names child-voice-tutor-alb --region "$REGION" \
+ALB_ARN=$(aws elbv2 describe-load-balancers --names "${ECS_STACK}-alb" --region "$REGION" \
   --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
 
 if [[ -n "$ALB_ARN" && "$ALB_ARN" != "None" ]]; then

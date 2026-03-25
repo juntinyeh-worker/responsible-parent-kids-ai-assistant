@@ -119,6 +119,15 @@ Resources:
                   - bedrock:InvokeModelWithResponseStream
                   - bedrock:InvokeModelWithBidirectionalStream
                 Resource: '*'
+        - PolicyName: SSMParamAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*'
         - !If
           - HasS3Bucket
           - PolicyName: S3LogAccess
@@ -156,6 +165,8 @@ Resources:
           Environment:
             - Name: DEPLOY_ENV
               Value: aws
+            - Name: STACK_NAME
+              Value: !Ref AWS::StackName
             - Name: BEDROCK_REGION
               Value: !Ref BedrockRegion
             - Name: NOVA_VOICE_ID

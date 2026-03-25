@@ -24,7 +24,7 @@ from smithy_aws_core.identity.container import ContainerCredentialsResolver
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
 from smithy_http.aio.crt import AWSCRTHTTPClient
 
-from prompts import SYSTEM_PROMPT
+from prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ class NovaSonicSession:
                 "textInput": {
                     "promptName": self.prompt_name,
                     "contentName": self.content_name,
-                    "content": SYSTEM_PROMPT,
+                    "content": get_system_prompt(),
                 }
             }
         }))
