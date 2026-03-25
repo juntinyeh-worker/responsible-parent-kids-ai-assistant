@@ -98,10 +98,10 @@
     <div class="error" id="error"></div>
   </div>
   <script>
-    // Cognito config — will be replaced by deploy script or hardcoded after stack deploy
-    const COGNITO_REGION = 'us-east-1';
-    const COGNITO_CLIENT_ID = '2e8s215t9bq33vq5gjp6qq5o99';
-    const LOGIN_EMAIL = 'test@example.com';
+    // Cognito config — injected by deploy-frontend.sh at deploy time
+    const COGNITO_REGION = '{{COGNITO_REGION}}';
+    const COGNITO_CLIENT_ID = '{{COGNITO_CLIENT_ID}}';
+    const LOGIN_EMAIL = '{{LOGIN_EMAIL}}';
     const PASSWORD_PREFIX = 'Test@';
 
     let code = '';

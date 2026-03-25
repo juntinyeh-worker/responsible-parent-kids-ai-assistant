@@ -67,8 +67,18 @@ COGNITO_LOGIN_URL=$(get_output CognitoLoginUrl)
 ALB_SECRET=$(get_output ALBOriginSecret)
 USER_POOL_ID=$(get_output UserPoolId)
 
+# ── Get Cognito config from ECS stack outputs ────────────────────────
+get_ecs_output() {
+  aws cloudformation describe-stacks --stack-name "$ECS_STACK" --region "$REGION" \
+    --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+}
+COGNITO_CLIENT_ID=$(get_ecs_output UserPoolClientId)
+COGNITO_REGION=$(get_ecs_output CognitoRegion)
+
 echo "   CloudFront: $CF_DOMAIN"
 echo "   S3 Bucket:  $STATIC_BUCKET"
+echo "   Cognito Client ID: $COGNITO_CLIENT_ID"
+echo "   Cognito Region: $COGNITO_REGION"
 
 # ── Update CloudFront Function with actual Cognito URL ───────────────
 echo "🔧 Updating auth function with Cognito login URL..."
@@ -112,15 +122,29 @@ FUNCEOF
   echo "   ✅ Auth function updated"
 fi
 
+# ── Inject Cognito config into login.html ─────────────────────────────
+echo "🔧 Injecting Cognito config into login.html..."
+STAGING_DIR=$(mktemp -d)
+cp -r "$PROJECT_DIR/static/"* "$STAGING_DIR/"
+
+sed -i.bak \
+  -e "s|{{COGNITO_REGION}}|${COGNITO_REGION}|g" \
+  -e "s|{{COGNITO_CLIENT_ID}}|${COGNITO_CLIENT_ID}|g" \
+  -e "s|{{LOGIN_EMAIL}}|${ADMIN_EMAIL}|g" \
+  "$STAGING_DIR/login.html"
+rm -f "$STAGING_DIR/login.html.bak"
+echo "   ✅ Cognito config injected"
+
 # ── Upload frontend to S3 ────────────────────────────────────────────
 echo "📤 Uploading frontend to S3..."
-aws s3 sync "$PROJECT_DIR/static/" "s3://$STATIC_BUCKET/" \
+aws s3 sync "$STAGING_DIR/" "s3://$STATIC_BUCKET/" \
   --delete --cache-control "public, max-age=3600" --region "$REGION"
 
-aws s3 cp "$PROJECT_DIR/static/index.html" "s3://$STATIC_BUCKET/index.html" \
+aws s3 cp "$STAGING_DIR/index.html" "s3://$STATIC_BUCKET/index.html" \
   --cache-control "no-cache, no-store, must-revalidate" \
   --content-type "text/html" --region "$REGION"
 
+rm -rf "$STAGING_DIR"
 echo "   ✅ Frontend uploaded"
 
 # ── Invalidate CloudFront cache ──────────────────────────────────────
