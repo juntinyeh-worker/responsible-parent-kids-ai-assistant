@@ -2,28 +2,32 @@
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 from config import config
-from session import NovaSonicSession
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from logging_service import ConversationLogEntry, write_log
+from pydantic import BaseModel
+from session import NovaSonicSession
 
-import os
 logging.basicConfig(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")), format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(json.dumps({
-        "event": "startup",
-        "deploy_env": config.deploy_env,
-        "status": "ready",
-    }))
+    logger.info(
+        json.dumps(
+            {
+                "event": "startup",
+                "deploy_env": config.deploy_env,
+                "status": "ready",
+            }
+        )
+    )
     yield
     logger.info(json.dumps({"event": "shutdown"}))
 
@@ -32,6 +36,7 @@ app = FastAPI(title="Child Voice Tutor (Nova Sonic)", lifespan=lifespan, redirec
 
 
 # --- Models ---
+
 
 class SessionLogRequest(BaseModel):
     clientId: str
@@ -43,6 +48,7 @@ class SessionLogRequest(BaseModel):
 
 
 # --- Routes ---
+
 
 @app.get("/api/health")
 async def health():
@@ -94,9 +100,8 @@ async def audio_websocket(ws: WebSocket):
 
         # Start reading Nova Sonic responses in background
         import asyncio
-        response_task = asyncio.create_task(
-            session.process_responses(on_audio, on_text, on_event)
-        )
+
+        response_task = asyncio.create_task(session.process_responses(on_audio, on_text, on_event))
 
         # Read audio from browser and forward to Nova Sonic
         chunk_count = 0
@@ -107,7 +112,7 @@ async def audio_websocket(ws: WebSocket):
             if msg_type == "audio":
                 chunk_count += 1
                 if chunk_count <= 3 or chunk_count % 100 == 0:
-                    logger.info(f"Audio chunk #{chunk_count} received ({len(msg.get('data',''))} b64 chars)")
+                    logger.info(f"Audio chunk #{chunk_count} received ({len(msg.get('data', ''))} b64 chars)")
                 await session.send_audio_chunk(msg["data"])
             elif msg_type == "stop":
                 logger.info(f"Stop received after {chunk_count} chunks")
@@ -136,11 +141,15 @@ async def session_log(body: SessionLogRequest):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(json.dumps({
-        "event": "unhandled_exception",
-        "error": str(exc),
-        "path": str(request.url.path),
-    }))
+    logger.error(
+        json.dumps(
+            {
+                "event": "unhandled_exception",
+                "error": str(exc),
+                "path": str(request.url.path),
+            }
+        )
+    )
     return JSONResponse(status_code=500, content={"error": "Internal server error."})
 
 

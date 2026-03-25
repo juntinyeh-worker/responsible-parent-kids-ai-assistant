@@ -12,13 +12,13 @@ Environment variables (set via ECS task definition or .env):
     DEPLOY_ENV      — Must be "aws" for S3 shipping to work
 """
 
+import argparse
+import logging
 import os
 import sys
 import time
-import logging
-import argparse
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 def get_s3_client():
     """Lazy import boto3 to avoid dependency in local mode."""
     import boto3
+
     return boto3.client("s3")
 
 

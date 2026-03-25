@@ -1,7 +1,7 @@
 """Unit + property tests for rate limiter."""
+
 import time
-import pytest
-from hypothesis import given, settings, strategies as st
+
 from rate_limit import RateLimiter
 
 

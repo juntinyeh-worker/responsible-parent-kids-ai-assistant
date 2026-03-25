@@ -1,8 +1,10 @@
 """Unit tests for session creation."""
-import pytest
+
 from unittest.mock import AsyncMock, patch
-from session import create_session, SessionCreationError
+
+import pytest
 from prompts import SYSTEM_PROMPT
+from session import create_session
 
 
 def test_system_prompt_contains_safety_keywords():
@@ -30,8 +32,10 @@ async def test_create_session_returns_token():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.post = AsyncMock(return_value=mock_response)
 
-    with patch("session.httpx.AsyncClient", return_value=mock_client), \
-         patch("session.get_api_key", return_value="sk-test"):
+    with (
+        patch("session.httpx.AsyncClient", return_value=mock_client),
+        patch("session.get_api_key", return_value="sk-test"),
+    ):
         result = await create_session()
 
     assert result.sessionToken == "eph_test123"

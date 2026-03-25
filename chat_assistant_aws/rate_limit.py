@@ -31,10 +31,7 @@ class RateLimiter:
         """Remove IPs with no recent requests to prevent memory leaks."""
         now = time.time()
         cutoff = now - self.window
-        empty_ips = [
-            ip for ip, times in self._requests.items()
-            if not any(t > cutoff for t in times)
-        ]
+        empty_ips = [ip for ip, times in self._requests.items() if not any(t > cutoff for t in times)]
         for ip in empty_ips:
             del self._requests[ip]
 

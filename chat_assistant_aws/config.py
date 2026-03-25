@@ -1,6 +1,7 @@
 """Environment-aware application configuration."""
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,9 +13,7 @@ class AppConfig:
     def __init__(self):
         self.deploy_env: str = os.getenv("DEPLOY_ENV", "local")
         if self.deploy_env not in VALID_DEPLOY_ENVS:
-            raise ValueError(
-                f"Invalid DEPLOY_ENV='{self.deploy_env}'. Must be one of: {VALID_DEPLOY_ENVS}"
-            )
+            raise ValueError(f"Invalid DEPLOY_ENV='{self.deploy_env}'. Must be one of: {VALID_DEPLOY_ENVS}")
 
         self.local_log_dir: str = os.getenv("LOCAL_LOG_DIR", "./logs")
         self.s3_log_bucket: str | None = os.getenv("S3_LOG_BUCKET")

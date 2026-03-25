@@ -5,6 +5,7 @@ it overrides the hardcoded default below.
 """
 
 import os
+
 from ssm_config import get_ssm_param
 
 _DEFAULT_SYSTEM_PROMPT = """You are a friendly, patient STEM tutor for children aged 3–18.

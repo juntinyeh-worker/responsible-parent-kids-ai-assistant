@@ -1,8 +1,9 @@
 """Unit tests for conversation log writer (JSONL append + 20MB rotation)."""
+
 import json
+
 import pytest
-from pathlib import Path
-from logging_service import ConversationLogEntry, _write_local, _get_current_log_path, MAX_FILE_SIZE_BYTES
+from logging_service import MAX_FILE_SIZE_BYTES, ConversationLogEntry, _get_current_log_path, _write_local
 
 
 @pytest.fixture
@@ -13,9 +14,12 @@ def tmp_log_dir(tmp_path, monkeypatch):
 
 def _make_entry(turn=1, client="client-1", session="sess-1"):
     return ConversationLogEntry(
-        clientId=client, sessionId=session, turnNumber=turn,
+        clientId=client,
+        sessionId=session,
+        turnNumber=turn,
         timestamp="2026-03-21T00:00:00Z",
-        requestSummary="Hello", responseSummary="Hi there",
+        requestSummary="Hello",
+        responseSummary="Hi there",
     )
 
 

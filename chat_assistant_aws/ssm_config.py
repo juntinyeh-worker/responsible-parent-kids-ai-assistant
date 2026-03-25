@@ -6,7 +6,6 @@ Only active when DEPLOY_ENV=aws; returns None in local mode.
 
 import logging
 import time
-from typing import Optional
 
 from config import config
 
@@ -16,7 +15,7 @@ _cache: dict[str, tuple[str, float]] = {}
 DEFAULT_TTL = 300.0  # 5 minutes
 
 
-def get_ssm_param(name: str, ttl: float = DEFAULT_TTL) -> Optional[str]:
+def get_ssm_param(name: str, ttl: float = DEFAULT_TTL) -> str | None:
     """Fetch an SSM parameter by name. Returns None if not found or in local mode."""
     if not config.is_aws:
         return None
@@ -29,6 +28,7 @@ def get_ssm_param(name: str, ttl: float = DEFAULT_TTL) -> Optional[str]:
 
     try:
         import boto3
+
         client = boto3.client("ssm", region_name=config.bedrock_region)
         resp = client.get_parameter(Name=name, WithDecryption=True)
         value = resp["Parameter"]["Value"]
