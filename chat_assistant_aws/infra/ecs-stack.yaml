@@ -337,21 +337,12 @@ Resources:
         function handler(event) {
           var request = event.request;
           var uri = request.uri;
-          var cookies = parseCookies(request.headers.cookie);
+          var cookies = request.cookies || {};
           if (uri.startsWith('/api/')) { return request; }
           if (uri === '/login.html') { return request; }
           if (uri.match(/\.(js|css|svg|png|jpg|ico|woff2?)$/)) { return request; }
-          if (cookies['cvt-authed'] === '1') { return request; }
+          if (cookies['cvt-authed'] && cookies['cvt-authed'].value === '1') { return request; }
           return { statusCode: 302, statusDescription: 'Found', headers: { location: { value: '/login.html' } } };
-        }
-        function parseCookies(h) {
-          var c = {};
-          if (!h || !h.value) return c;
-          h.value.split(';').forEach(function(s) {
-            var p = s.trim().split('=');
-            if (p.length >= 2) c[p[0]] = p.slice(1).join('=');
-          });
-          return c;
         }
       FunctionConfig:
         Comment: Auth gate - redirect to login

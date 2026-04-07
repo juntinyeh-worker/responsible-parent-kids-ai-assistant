@@ -8,9 +8,11 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
   ImageUri:
     Type: String
-  SecretsName:
+  InitialSecretValue:
     Type: String
-    Default: openai-api-key
+    Default: 'PLACEHOLDER-replace-after-deploy'
+    NoEcho: true
+    Description: Initial value for the OpenAI API key secret (replace after deploy)
   S3LogBucket:
     Type: String
     Default: ''
@@ -113,7 +115,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretsName}-*'
+                Resource: !Ref OpenAIApiKeySecret
         - !If
           - HasS3Bucket
           - PolicyName: S3LogAccess
@@ -154,7 +156,7 @@ Resources:
             - Name: STACK_NAME
               Value: !Ref AWS::StackName
             - Name: SECRETS_NAME
-              Value: !Ref SecretsName
+              Value: !Sub '${AWS::StackName}/openai-api-key'
             - Name: LOCAL_LOG_DIR
               Value: /app/logs
             - Name: S3_LOG_BUCKET
@@ -268,6 +270,14 @@ Resources:
             ResponseCode: 200
             ResponsePagePath: /index.html
 
+  # --- Secrets Manager ---
+  OpenAIApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/openai-api-key'
+      Description: !Sub 'OpenAI API key for ${AWS::StackName}'
+      SecretString: !Ref InitialSecretValue
+
   # --- Cognito ---
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -303,21 +313,12 @@ Resources:
         function handler(event) {
           var request = event.request;
           var uri = request.uri;
-          var cookies = parseCookies(request.headers.cookie);
+          var cookies = request.cookies || {};
           if (uri.startsWith('/api/')) { return request; }
           if (uri === '/login.html') { return request; }
           if (uri.match(/\.(js|css|svg|png|jpg|ico|woff2?)$/)) { return request; }
-          if (cookies['cvt-authed'] === '1') { return request; }
+          if (cookies['cvt-authed'] && cookies['cvt-authed'].value === '1') { return request; }
           return { statusCode: 302, statusDescription: 'Found', headers: { location: { value: '/login.html' } } };
-        }
-        function parseCookies(h) {
-          var c = {};
-          if (!h || !h.value) return c;
-          h.value.split(';').forEach(function(s) {
-            var p = s.trim().split('=');
-            if (p.length >= 2) c[p[0]] = p.slice(1).join('=');
-          });
-          return c;
         }
       FunctionConfig:
         Comment: Auth gate - redirect to login
@@ -338,3 +339,7 @@ Outputs:
     Value: !Ref UserPoolClient
   CognitoRegion:
     Value: !Ref AWS::Region
+  SecretName:
+    Value: !Sub '${AWS::StackName}/openai-api-key'
+  SecretArn:
+    Value: !Ref OpenAIApiKeySecret

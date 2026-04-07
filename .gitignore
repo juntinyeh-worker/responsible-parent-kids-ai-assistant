@@ -211,3 +211,4 @@ __marimo__/
 # AWS credentials
 .aws.credential.sh
 *.credential.sh
+.*sh

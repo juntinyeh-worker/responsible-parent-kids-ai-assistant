@@ -131,7 +131,6 @@ aws cloudformation deploy \
     VpcId="$VPC_ID" \
     SubnetIds="$SUBNET_IDS" \
     ImageUri="$IMAGE_URI" \
-    SecretsName="${SECRETS_NAME:-openai-api-key}" \
     S3LogBucket="$S3_BUCKET" \
   --no-fail-on-empty-changeset
 
@@ -149,6 +148,18 @@ echo "  ✅ Deployed!"
 echo "  🌐 URL: http://$ALB_DNS"
 echo "  📋 Health: http://$ALB_DNS/api/health"
 echo "════════════════════════════════════════════════════════════"
+
+# ── Remind about secret if placeholder ───────────────────────────────
+NEW_SECRET_NAME="${STACK_NAME}/openai-api-key"
+CURRENT_VALUE=$(aws secretsmanager get-secret-value --secret-id "$NEW_SECRET_NAME" --region "$REGION" \
+  --query SecretString --output text 2>/dev/null || echo "")
+
+if [[ "$CURRENT_VALUE" == "PLACEHOLDER-replace-after-deploy" ]]; then
+  echo ""
+  echo "  ⚠️  Secret '$NEW_SECRET_NAME' still has placeholder value."
+  echo "  Set it manually:"
+  echo "  aws secretsmanager put-secret-value --secret-id $NEW_SECRET_NAME --secret-string 'sk-your-key' --region $REGION"
+fi
 echo ""
 echo "Useful commands:"
 echo "  # Watch ECS service events"
