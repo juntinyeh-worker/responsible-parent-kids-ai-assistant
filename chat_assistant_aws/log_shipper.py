@@ -17,18 +17,23 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+_s3_client = None
+
 
 def get_s3_client():
-    """Lazy import boto3 to avoid dependency in local mode."""
-    import boto3
+    """Lazy-init and cache the boto3 S3 client."""
+    global _s3_client
+    if _s3_client is None:
+        import boto3
 
-    return boto3.client("s3")
+        _s3_client = boto3.client("s3")
+    return _s3_client
 
 
 def ship_logs(log_dir: str, bucket: str, prefix: str, delete_after: bool = True) -> int:
@@ -56,7 +61,7 @@ def ship_logs(log_dir: str, bucket: str, prefix: str, delete_after: bool = True)
     files_to_ship = files[:-1]
 
     for f in files_to_ship:
-        timestamp = datetime.utcnow().strftime("%Y/%m/%d")
+        timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d")
         s3_key = f"{prefix}/{timestamp}/{f.name}"
 
         try:
@@ -88,7 +93,7 @@ def ship_active_file(log_dir: str, bucket: str, prefix: str) -> int:
     if active.stat().st_size == 0:
         return 0
 
-    timestamp = datetime.utcnow().strftime("%Y/%m/%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d")
     s3_key = f"{prefix}/{timestamp}/{active.name}"
 
     try:
