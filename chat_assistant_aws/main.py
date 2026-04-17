@@ -1,5 +1,6 @@
 """FastAPI application — WebSocket audio proxy to Nova Sonic + static file server."""
 
+import asyncio
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from logging_service import ConversationLogEntry, write_log
 from pydantic import BaseModel
+from rate_limit import rate_limiter
 from session import NovaSonicSession
 
 logging.basicConfig(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")), format="%(message)s")
@@ -28,8 +30,17 @@ async def lifespan(app: FastAPI):
             }
         )
     )
+    cleanup_task = asyncio.create_task(_periodic_cleanup())
     yield
+    cleanup_task.cancel()
     logger.info(json.dumps({"event": "shutdown"}))
+
+
+async def _periodic_cleanup():
+    """Purge stale rate-limiter entries every 5 minutes to prevent memory leaks."""
+    while True:
+        await asyncio.sleep(300)
+        rate_limiter.cleanup()
 
 
 app = FastAPI(title="Child Voice Tutor (Nova Sonic)", lifespan=lifespan, redirect_slashes=False)
@@ -99,8 +110,6 @@ async def audio_websocket(ws: WebSocket):
                 session.is_active = False
 
         # Start reading Nova Sonic responses in background
-        import asyncio
-
         response_task = asyncio.create_task(session.process_responses(on_audio, on_text, on_event))
 
         # Read audio from browser and forward to Nova Sonic
