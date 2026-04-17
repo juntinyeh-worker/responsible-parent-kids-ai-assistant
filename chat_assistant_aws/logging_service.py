@@ -6,6 +6,7 @@ AWS (Phase 2): writes to S3 (stub)
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import config
@@ -14,6 +15,17 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+_s3_client = None
+
+
+def _get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        import boto3
+
+        _s3_client = boto3.client("s3")
+    return _s3_client
 
 
 class ConversationLogEntry(BaseModel):
@@ -68,12 +80,8 @@ async def _write_local(entry: ConversationLogEntry) -> None:
 
 async def _write_s3(entry: ConversationLogEntry) -> None:
     """Write log entry to S3 as individual JSON file."""
-    from datetime import datetime
-
-    import boto3
-
-    s3 = boto3.client("s3")
-    timestamp = datetime.utcnow().strftime("%Y/%m/%d")
+    s3 = _get_s3_client()
+    timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d")
     key = f"{config.s3_log_prefix}/{timestamp}/{entry.clientId}/{entry.sessionId}/{entry.turnNumber}.json"
     body = json.dumps(entry.model_dump(), ensure_ascii=False)
     s3.put_object(
