@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py config.py session.py prompts.py rate_limit.py logging_service.py log_shipper.py ./
+COPY main.py config.py session.py prompts.py rate_limit.py logging_service.py log_shipper.py ssm_config.py ./
 COPY static/ ./static/
 
 ENV DEPLOY_ENV=local
