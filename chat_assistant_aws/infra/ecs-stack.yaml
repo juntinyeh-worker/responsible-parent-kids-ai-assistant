@@ -177,6 +177,8 @@ Resources:
               Value: !Ref S3LogBucket
             - Name: S3_LOG_PREFIX
               Value: conversation-logs
+            - Name: S3_AUDIO_PREFIX
+              Value: voice-responses
             - Name: LOG_LEVEL
               Value: DEBUG
           LogConfiguration:

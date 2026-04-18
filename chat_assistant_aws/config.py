@@ -18,6 +18,7 @@ class AppConfig:
         self.local_log_dir: str = os.getenv("LOCAL_LOG_DIR", "./logs")
         self.s3_log_bucket: str | None = os.getenv("S3_LOG_BUCKET")
         self.s3_log_prefix: str = os.getenv("S3_LOG_PREFIX", "conversation-logs")
+        self.s3_audio_prefix: str = os.getenv("S3_AUDIO_PREFIX", "voice-responses")
 
         # Bedrock / Nova Sonic config
         self.bedrock_region: str = os.getenv("BEDROCK_REGION", "us-east-1")
