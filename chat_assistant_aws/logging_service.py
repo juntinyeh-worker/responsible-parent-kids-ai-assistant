@@ -164,3 +164,64 @@ async def upload_voice_response(session_id: str, turn_number: int, audio_chunks:
 def get_voice_response_s3_key(session_id: str, turn_number: int, date_str: str) -> str:
     """Build the S3 key for a stored voice response."""
     return f"{config.s3_audio_prefix}/{date_str}/{session_id}/{turn_number}.pcm"
+
+
+async def list_sessions() -> list[dict]:
+    """List all logged sessions with metadata. Returns [{sessionId, firstTimestamp, turnCount}]."""
+    sessions: dict[str, dict] = {}
+    try:
+        if config.is_local:
+            log_dir = Path(config.local_log_dir)
+            for f in sorted(log_dir.glob("server_turn_log_*.jsonl")):
+                for line in f.read_text(encoding="utf-8").strip().splitlines():
+                    entry = json.loads(line)
+                    sid = entry["sessionId"]
+                    if sid not in sessions:
+                        sessions[sid] = {"sessionId": sid, "firstTimestamp": entry["timestamp"], "turnCount": 0}
+                    sessions[sid]["turnCount"] += 1
+        elif config.is_aws and config.s3_log_bucket:
+            s3 = _get_s3_client()
+            prefix = f"{config.s3_log_prefix}/server-turns/"
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=config.s3_log_bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    # key: conversation-logs/server-turns/YYYY/MM/DD/{sessionId}/{turn}.json
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 7 and parts[-1].endswith(".json"):
+                        sid = parts[-2]
+                        if sid not in sessions:
+                            sessions[sid] = {
+                                "sessionId": sid,
+                                "firstTimestamp": obj["LastModified"].isoformat(),
+                                "turnCount": 0,
+                            }
+                        sessions[sid]["turnCount"] += 1
+    except Exception as e:
+        logger.error(f"Failed to list sessions: {e}")
+    return sorted(sessions.values(), key=lambda s: s["firstTimestamp"], reverse=True)
+
+
+async def list_session_turns(session_id: str) -> list[dict]:
+    """List all turns for a given session. Returns [{turnNumber, timestamp, userText, assistantText, audioS3Key}]."""
+    turns: list[dict] = []
+    try:
+        if config.is_local:
+            log_dir = Path(config.local_log_dir)
+            for f in sorted(log_dir.glob("server_turn_log_*.jsonl")):
+                for line in f.read_text(encoding="utf-8").strip().splitlines():
+                    entry = json.loads(line)
+                    if entry["sessionId"] == session_id:
+                        turns.append(entry)
+        elif config.is_aws and config.s3_log_bucket:
+            s3 = _get_s3_client()
+            prefix = f"{config.s3_log_prefix}/server-turns/"
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=config.s3_log_bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 7 and parts[-2] == session_id and parts[-1].endswith(".json"):
+                        body = s3.get_object(Bucket=config.s3_log_bucket, Key=obj["Key"])["Body"].read()
+                        turns.append(json.loads(body))
+    except Exception as e:
+        logger.error(f"Failed to list turns for {session_id}: {e}")
+    return sorted(turns, key=lambda t: t.get("turnNumber", 0))

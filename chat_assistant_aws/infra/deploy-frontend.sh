@@ -144,6 +144,13 @@ aws s3 cp "$STAGING_DIR/index.html" "s3://$STATIC_BUCKET/index.html" \
   --cache-control "no-cache, no-store, must-revalidate" \
   --content-type "text/html" --region "$REGION"
 
+# Also set no-cache on chat.html (the voice chat page)
+if [ -f "$STAGING_DIR/chat.html" ]; then
+  aws s3 cp "$STAGING_DIR/chat.html" "s3://$STATIC_BUCKET/chat.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html" --region "$REGION"
+fi
+
 rm -rf "$STAGING_DIR"
 echo "   ✅ Frontend uploaded"
 

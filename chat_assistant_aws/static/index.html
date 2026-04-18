@@ -2,119 +2,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Why? Why? Why!</title>
+  <title>Why? Why? Why! — Conversation Logs</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-    }
-    .container {
-      text-align: center;
-      padding: 2rem;
-      max-width: 600px;
-      width: 100%;
-    }
-    h1 { font-size: 2rem; margin-bottom: 1rem; }
-
-    /* Avatar */
-    .avatar {
-      width: 90px; height: 90px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.2);
-      margin: 1rem auto;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 2.5rem;
-      transition: all 0.3s ease;
-      position: relative;
-    }
-    .avatar.idle { background: rgba(255,255,255,0.15); }
-    .avatar.connecting { animation: pulse 1.5s infinite; }
-    .avatar.listening { background: rgba(76,175,80,0.4); box-shadow: 0 0 30px rgba(76,175,80,0.5); }
-</style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;color:#fff}
+    .header{text-align:center;padding:1.5rem 1rem 1rem}
+    .header h1{font-size:1.6rem}
+    .header .sub{font-size:.85rem;opacity:.7;margin:.3rem 0}
+    .nav{display:flex;justify-content:center;gap:.8rem;margin:.8rem 0}
+    .nav a{padding:.5rem 1.2rem;border-radius:20px;text-decoration:none;color:#fff;font-size:.85rem;border:1px solid rgba(255,255,255,.4);transition:background .2s}
+    .nav a:hover{background:rgba(255,255,255,.15)}
+    .container{max-width:800px;margin:0 auto;padding:0 1rem 2rem}
+    .panel{background:rgba(255,255,255,.1);border-radius:16px;padding:1.2rem;margin-bottom:1rem;backdrop-filter:blur(8px)}
+    .session-item{padding:.8rem;border-radius:10px;cursor:pointer;transition:background .15s;display:flex;justify-content:space-between;align-items:center}
+    .session-item:hover{background:rgba(255,255,255,.12)}
+    .session-item .id{font-family:monospace;font-size:.8rem;opacity:.8;overflow:hidden;text-overflow:ellipsis;max-width:50%}
+    .session-item .meta{font-size:.8rem;opacity:.7;text-align:right}
+    .turn{padding:.8rem;border-radius:10px;margin-bottom:.6rem;background:rgba(255,255,255,.06)}
+    .turn-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem}
+    .turn-num{font-weight:bold;font-size:.85rem}
+    .turn-time{font-size:.75rem;opacity:.6}
+    .turn-text{font-size:.85rem;line-height:1.5}
+    .turn-text .role{font-weight:bold;opacity:.8}
+    .turn-text .user{color:#81c784}
+    .turn-text .assistant{color:#90caf9}
+    .play-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:.4rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;transition:background .15s}
+    .play-btn:hover{background:rgba(255,255,255,.3)}
+    .play-btn:disabled{opacity:.4;cursor:not-allowed}
+    .back-btn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;padding:.4rem 1rem;border-radius:20px;cursor:pointer;font-size:.85rem;margin-bottom:1rem;transition:background .2s}
+    .back-btn:hover{background:rgba(255,255,255,.15)}
+    .empty{text-align:center;padding:2rem;opacity:.6;font-size:.9rem}
+    .loading{text-align:center;padding:2rem;font-size:1.2rem}
+  </style>
 </head>
 <body>
-  <div class="container">
+  <div class="header">
     <h1>🎓 Why? Why? Why!</h1>
-    <p style="font-size:0.9rem;opacity:0.7;margin-bottom:0.5rem;">Your curious kid's favorite answer buddy</p>
-    <a href="#" onclick="document.cookie='cvt-authed=;path=/;max-age=0';location.href='/login.html'" style="display:inline-block;font-size:0.85rem;padding:0.4rem 1.2rem;border:1px solid rgba(255,255,255,0.4);border-radius:20px;text-decoration:none;color:#fff;opacity:0.7;margin-top:0.3rem;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">Logout</a>
-    <div id="avatar" class="avatar idle">🤖</div>
-    <p id="status-text" style="margin:0.5rem 0; font-size:1rem; opacity:0.9;">點擊下方按鈕開始對話</p>
-    <div id="mic-indicator" aria-live="polite" style="display:none; font-size:1.5rem; margin:0.5rem 0;">
-      <span id="mic-icon">🎙️</span>
-      <span id="mic-label" style="font-size:0.9rem; vertical-align:middle; margin-left:0.3rem;">Mic On</span>
-    </div>
-
-    <button id="start-btn" aria-label="Start talking to AI tutor"
-      style="font-size:1.8rem; padding:1.5rem 3.5rem; border:none; border-radius:50px;
-             background:#4CAF50; color:#fff; cursor:pointer; min-width:280px;
-             min-height:80px; touch-action:manipulation; font-weight:bold;
-             box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;">
-      🎤 Start Chat
-    </button>
-
-    <button id="retry-btn" aria-label="Retry connection" style="display:none;
-      font-size:1.2rem; padding:0.8rem 2rem; border:none; border-radius:50px;
-      background:#FF9800; color:#fff; cursor:pointer; min-width:180px;
-      min-height:50px; touch-action:manipulation; font-weight:bold;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-top:1rem;">
-      🔄 Retry
-    </button>
-
-    <button id="stop-btn" aria-label="End conversation" style="display:none;
-      font-size:1.2rem; padding:0.8rem 2rem; border:none; border-radius:50px;
-      background:#f44336; color:#fff; cursor:pointer; min-width:180px;
-      min-height:50px; touch-action:manipulation; font-weight:bold;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-top:1rem;">
-      ⏹ End Chat
-    </button>
-
-    <button id="mic-toggle-btn" aria-label="Toggle microphone" style="display:none;
-      font-size:1.8rem; padding:1.5rem 3.5rem; border:none; border-radius:50px;
-      background:#2196F3; color:#fff; cursor:pointer; min-width:280px;
-      min-height:80px; touch-action:manipulation; font-weight:bold;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;">
-      🎤 Mic ON
-    </button>
-
-    <div id="unsupported" style="display:none; background:rgba(255,0,0,0.2);
-      padding:1.5rem; border-radius:12px; margin-top:1.5rem;" role="alert">
-      <p>😔 Your browser doesn't support voice features</p>
-      <p style="font-size:0.9rem; margin-top:0.5rem;">Please use Chrome, Safari, or Edge</p>
-    </div>
-
-    <div id="transcript" style="margin-top:1.5rem; text-align:left; max-height:300px;
-      overflow-y:auto; background:rgba(255,255,255,0.1); border-radius:12px;
-      padding:1rem; display:none; width:80%; margin-left:auto; margin-right:auto;">
-      <p style="font-size:0.8rem; opacity:0.7;">Transcript</p>
-      <div id="transcript-content"></div>
+    <p class="sub">Conversation Logs</p>
+    <div class="nav">
+      <a href="/chat.html">🎤 Start Chat</a>
+      <a href="#" onclick="document.cookie='cvt-authed=;path=/;max-age=0';location.href='/login.html'">Logout</a>
     </div>
   </div>
-
-  <style>
-    .avatar.speaking { background: rgba(33,150,243,0.4); box-shadow: 0 0 30px rgba(33,150,243,0.5); animation: speak 0.8s infinite alternate; }
-    .avatar.processing { background: rgba(255,193,7,0.4); animation: pulse 1s infinite; }
-    .avatar.responding { background: rgba(156,39,176,0.4); box-shadow: 0 0 30px rgba(156,39,176,0.5); animation: speak 0.6s infinite alternate; }
-    .avatar.error { background: rgba(244,67,54,0.3); }
-    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
-    @keyframes speak { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
-    button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
-    button:active { transform: translateY(0); }
-  </style>
+  <div class="container">
+    <div id="content"><div class="loading">⏳ Loading sessions...</div></div>
+  </div>
 
   <script>
-    // Auth gate: redirect to login if no session cookie
-    if (!document.cookie.split(';').some(c => c.trim().startsWith('cvt-authed=1'))) {
-      window.location.replace('/login.html');
+    if(!document.cookie.split(';').some(c=>c.trim().startsWith('cvt-authed=1'))){window.location.replace('/login.html')}
+
+    const content=document.getElementById('content');
+    const SAMPLE_RATE=24000;
+    let playbackCtx=null;
+
+    async function loadSessions(){
+      try{
+        const r=await fetch('/api/logs/sessions');
+        const sessions=await r.json();
+        if(!sessions.length){content.innerHTML='<div class="empty">No conversation logs yet.<br>Start a chat to create some!</div>';return}
+        content.innerHTML='<div class="panel">'+sessions.map(s=>{
+          const d=new Date(s.firstTimestamp);
+          const ts=d.toLocaleString();
+          const short=s.sessionId.substring(0,12)+'…';
+          return `<div class="session-item" onclick="loadTurns('${s.sessionId}')"><div><div class="id" title="${s.sessionId}">${short}</div></div><div class="meta">${s.turnCount} turn${s.turnCount>1?'s':''}<br>${ts}</div></div>`
+        }).join('')+'</div>';
+      }catch(e){content.innerHTML='<div class="empty">Failed to load sessions</div>';console.error(e)}
     }
+
+    async function loadTurns(sid){
+      content.innerHTML='<div class="loading">⏳ Loading turns...</div>';
+      try{
+        const r=await fetch(`/api/logs/sessions/${sid}/turns`);
+        const turns=await r.json();
+        let html=`<button class="back-btn" onclick="loadSessions()">← Back to sessions</button>`;
+        html+=`<div class="panel"><div style="font-size:.8rem;opacity:.6;margin-bottom:.8rem;font-family:monospace;word-break:break-all">Session: ${sid}</div>`;
+        if(!turns.length){html+='<div class="empty">No turns found</div>'}
+        turns.forEach(t=>{
+          const ts=t.timestamp?new Date(t.timestamp).toLocaleString():'';
+          const hasAudio=!!t.audioS3Key;
+          html+=`<div class="turn"><div class="turn-header"><span class="turn-num">Turn ${t.turnNumber}</span><div style="display:flex;align-items:center;gap:.5rem"><span class="turn-time">${ts}</span>${hasAudio?`<button class="play-btn" onclick="playAudio('${t.audioS3Key}',this)">▶ Play</button>`:''}</div></div><div class="turn-text"><div><span class="role user">👧 User:</span> ${esc(t.userText||'(no text)')}</div><div style="margin-top:.3rem"><span class="role assistant">🤖 Assistant:</span> ${esc(t.assistantText||'(no text)')}</div></div></div>`;
+        });
+        html+='</div>';
+        content.innerHTML=html;
+      }catch(e){content.innerHTML='<div class="empty">Failed to load turns</div>';console.error(e)}
+    }
+
+    async function playAudio(audioKey,btn){
+      btn.disabled=true;btn.textContent='⏳';
+      try{
+        // Extract date and session/turn from audioKey: voice-responses/YYYY/MM/DD/{sessionId}/{turn}.pcm
+        const parts=audioKey.replace(/\\/g,'/').split('/');
+        let sessionId,turnNum,dateStr;
+        if(parts.length>=6){
+          dateStr=parts.slice(1,4).join('/');
+          sessionId=parts[4];
+          turnNum=parseInt(parts[5]);
+        }else{
+          // local path fallback — just use the key directly
+          dateStr=parts.slice(-5,-2).join('/');
+          sessionId=parts[parts.length-2];
+          turnNum=parseInt(parts[parts.length-1]);
+        }
+        const r=await fetch(`/api/audio/${sessionId}/${turnNum}?date=${dateStr}`);
+        if(!r.ok)throw new Error('Audio not found');
+        const buf=await r.arrayBuffer();
+        const int16=new Int16Array(buf);
+        const float32=new Float32Array(int16.length);
+        for(let i=0;i<int16.length;i++)float32[i]=int16[i]/0x8000;
+        if(!playbackCtx)playbackCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+        const abuf=playbackCtx.createBuffer(1,float32.length,SAMPLE_RATE);
+        abuf.getChannelData(0).set(float32);
+        const src=playbackCtx.createBufferSource();
+        src.buffer=abuf;src.connect(playbackCtx.destination);
+        src.onended=()=>{btn.disabled=false;btn.textContent='▶ Play'};
+        src.start();btn.textContent='⏹ Playing';
+      }catch(e){console.error(e);btn.disabled=false;btn.textContent='❌ Error'}
+    }
+
+    function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+    loadSessions();
   </script>
-  <script src="app.js"></script>
 </body>
 </html>

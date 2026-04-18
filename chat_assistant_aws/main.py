@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from logging_service import (
     ConversationLogEntry,
     ServerTurnLog,
+    list_session_turns,
+    list_sessions,
     upload_voice_response,
     write_log,
     write_server_turn_log,
@@ -231,6 +233,18 @@ async def get_audio(session_id: str, turn_number: int, date: str | None = None):
         if local_path.exists():
             return Response(content=local_path.read_bytes(), media_type="audio/L16;rate=24000;channels=1")
         return JSONResponse(status_code=404, content={"error": "Audio not found"})
+
+
+@app.get("/api/logs/sessions")
+async def get_log_sessions():
+    """List all logged sessions."""
+    return await list_sessions()
+
+
+@app.get("/api/logs/sessions/{session_id}/turns")
+async def get_session_turns(session_id: str):
+    """List all turns for a session."""
+    return await list_session_turns(session_id)
 
 
 @app.exception_handler(Exception)
