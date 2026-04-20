@@ -201,6 +201,73 @@ async def list_sessions() -> list[dict]:
     return sorted(sessions.values(), key=lambda s: s["firstTimestamp"], reverse=True)
 
 
+async def list_log_dates() -> list[str]:
+    """List all dates that have logs. Returns ['YYYY/MM/DD', ...] sorted newest first."""
+    dates: set[str] = set()
+    try:
+        if config.is_aws and config.s3_log_bucket:
+            s3 = _get_s3_client()
+            prefix = f"{config.s3_log_prefix}/server-turns/"
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=config.s3_log_bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 7:
+                        dates.add(f"{parts[2]}/{parts[3]}/{parts[4]}")
+        elif config.is_local:
+            log_dir = Path(config.local_log_dir)
+            for f in sorted(log_dir.glob("server_turn_log_*.jsonl")):
+                for line in f.read_text(encoding="utf-8").strip().splitlines():
+                    ts = json.loads(line).get("timestamp", "")
+                    if ts:
+                        dates.add(ts[:10].replace("-", "/"))
+    except Exception as e:
+        logger.error(f"Failed to list log dates: {e}")
+    return sorted(dates, reverse=True)
+
+
+async def list_sessions_by_date(date_str: str) -> list[dict]:
+    """List sessions for a specific date. Returns [{sessionId, turnCount, firstTimestamp}]."""
+    sessions: dict[str, dict] = {}
+    try:
+        if config.is_aws and config.s3_log_bucket:
+            s3 = _get_s3_client()
+            prefix = f"{config.s3_log_prefix}/server-turns/{date_str}/"
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=config.s3_log_bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 7 and parts[-1].endswith(".json"):
+                        sid = parts[-2]
+                        if sid not in sessions:
+                            sessions[sid] = {
+                                "sessionId": sid,
+                                "date": date_str,
+                                "firstTimestamp": obj["LastModified"].isoformat(),
+                                "turnCount": 0,
+                            }
+                        sessions[sid]["turnCount"] += 1
+        elif config.is_local:
+            log_dir = Path(config.local_log_dir)
+            target = date_str.replace("/", "-")
+            for f in sorted(log_dir.glob("server_turn_log_*.jsonl")):
+                for line in f.read_text(encoding="utf-8").strip().splitlines():
+                    entry = json.loads(line)
+                    if entry.get("timestamp", "").startswith(target):
+                        sid = entry["sessionId"]
+                        if sid not in sessions:
+                            sessions[sid] = {
+                                "sessionId": sid,
+                                "date": date_str,
+                                "firstTimestamp": entry["timestamp"],
+                                "turnCount": 0,
+                            }
+                        sessions[sid]["turnCount"] += 1
+    except Exception as e:
+        logger.error(f"Failed to list sessions for {date_str}: {e}")
+    return sorted(sessions.values(), key=lambda s: s["firstTimestamp"], reverse=True)
+
+
 async def list_session_turns(session_id: str) -> list[dict]:
     """List all turns for a given session. Returns [{turnNumber, timestamp, userText, assistantText, audioS3Key}]."""
     turns: list[dict] = []

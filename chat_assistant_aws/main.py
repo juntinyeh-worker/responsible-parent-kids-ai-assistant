@@ -14,8 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from logging_service import (
     ConversationLogEntry,
     ServerTurnLog,
+    list_log_dates,
     list_session_turns,
     list_sessions,
+    list_sessions_by_date,
     upload_voice_response,
     write_log,
     write_server_turn_log,
@@ -239,6 +241,18 @@ async def get_audio(session_id: str, turn_number: int, date: str | None = None):
 async def get_log_sessions():
     """List all logged sessions."""
     return await list_sessions()
+
+
+@app.get("/api/logs/dates")
+async def get_log_dates():
+    """List all dates that have logs."""
+    return await list_log_dates()
+
+
+@app.get("/api/logs/dates/{year}/{month}/{day}/sessions")
+async def get_sessions_by_date(year: str, month: str, day: str):
+    """List sessions for a specific date."""
+    return await list_sessions_by_date(f"{year}/{month}/{day}")
 
 
 @app.get("/api/logs/sessions/{session_id}/turns")
