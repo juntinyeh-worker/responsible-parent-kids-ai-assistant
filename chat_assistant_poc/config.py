@@ -19,6 +19,7 @@ class AppConfig:
         self.local_log_dir: str = os.getenv("LOCAL_LOG_DIR", "./logs")
         self.s3_log_bucket: str | None = os.getenv("S3_LOG_BUCKET")
         self.s3_log_prefix: str = os.getenv("S3_LOG_PREFIX", "conversation-logs")
+        self.s3_audio_prefix: str = os.getenv("S3_AUDIO_PREFIX", "voice-responses")
         self.secrets_name: str | None = os.getenv("SECRETS_NAME")
 
         # In local mode, OPENAI_API_KEY must be set
