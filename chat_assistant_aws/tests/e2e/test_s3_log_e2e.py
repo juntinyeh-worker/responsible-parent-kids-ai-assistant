@@ -13,7 +13,7 @@ import uuid
 import boto3
 import pytest
 
-BUCKET = "sandbox-rpkai-static-256358067059"
+BUCKET = "sandbox-rpkai-logs-256358067059"
 REGION = "us-west-2"
 LOG_PREFIX = "conversation-logs"
 AUDIO_PREFIX = "voice-responses"
