@@ -1,0 +1,165 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why? Why? Why! — Log Browser</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;color:#e0e0e0}
+    .header{text-align:center;padding:1.2rem 1rem .8rem;border-bottom:1px solid rgba(255,255,255,.08)}
+    .header h1{font-size:1.4rem;color:#fff}
+    .nav{display:flex;justify-content:center;gap:.6rem;margin:.6rem 0 0}
+    .nav a{padding:.4rem 1rem;border-radius:16px;text-decoration:none;color:#aaa;font-size:.8rem;border:1px solid rgba(255,255,255,.15);transition:all .2s}
+    .nav a:hover,.nav a.active{background:rgba(255,255,255,.1);color:#fff}
+    .container{max-width:900px;margin:0 auto;padding:1rem}
+    .breadcrumb{font-size:.8rem;color:#888;margin-bottom:1rem}
+    .breadcrumb span{cursor:pointer;color:#64b5f6;transition:color .2s}
+    .breadcrumb span:hover{color:#90caf9}
+    .panel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden}
+    .list-item{padding:.7rem 1rem;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+    .list-item:last-child{border-bottom:none}
+    .list-item:hover{background:rgba(255,255,255,.06)}
+    .list-item .label{font-size:.9rem}
+    .list-item .meta{font-size:.75rem;color:#888}
+    .turn-card{padding:1rem;border-bottom:1px solid rgba(255,255,255,.05)}
+    .turn-card:last-child{border-bottom:none}
+    .turn-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+    .turn-num{font-size:.8rem;font-weight:600;color:#64b5f6}
+    .turn-time{font-size:.7rem;color:#666}
+    .turn-text{font-size:.85rem;line-height:1.6}
+    .turn-text .user{color:#81c784;margin-bottom:.3rem}
+    .turn-text .assistant{color:#90caf9}
+    .turn-text .role{font-weight:600;opacity:.7;font-size:.75rem;text-transform:uppercase;margin-right:.4rem}
+    .play-btn{background:rgba(100,181,246,.15);border:1px solid rgba(100,181,246,.3);color:#64b5f6;padding:.3rem .7rem;border-radius:6px;cursor:pointer;font-size:.75rem;transition:all .15s}
+    .play-btn:hover{background:rgba(100,181,246,.25)}
+    .play-btn:disabled{opacity:.4;cursor:not-allowed}
+    .empty{text-align:center;padding:3rem 1rem;color:#666;font-size:.9rem}
+    .loading{text-align:center;padding:2rem;color:#888}
+    .date-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;padding:.8rem}
+    .date-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;transition:all .15s}
+    .date-card:hover{background:rgba(100,181,246,.08);border-color:rgba(100,181,246,.3)}
+    .date-card .day{font-size:1.4rem;font-weight:700;color:#fff}
+    .date-card .month{font-size:.75rem;color:#888;margin-top:.2rem}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📋 Conversation Logs</h1>
+    <div class="nav">
+      <a href="/chat.html">🎤 Chat</a>
+      <a href="/log.html" class="active">📋 Logs</a>
+      <a href="#" onclick="document.cookie='cvt-authed=;path=/;max-age=0';location.href='/login.html'">Logout</a>
+    </div>
+  </div>
+  <div class="container">
+    <div id="breadcrumb" class="breadcrumb"></div>
+    <div id="content"><div class="loading">Loading...</div></div>
+  </div>
+
+  <script>
+    if(!document.cookie.split(';').some(c=>c.trim().startsWith('cvt-authed=1')))window.location.replace('/login.html');
+
+    const content=document.getElementById('content');
+    const breadcrumb=document.getElementById('breadcrumb');
+    const SAMPLE_RATE=24000;
+    let playCtx=null;
+
+    const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function setBreadcrumb(parts){
+      breadcrumb.innerHTML=parts.map((p,i)=>i<parts.length-1?`<span onclick="${p.action}">${p.label}</span> / `:`${p.label}`).join('');
+    }
+
+    async function loadDates(){
+      setBreadcrumb([{label:'All Dates'}]);
+      content.innerHTML='<div class="loading">Loading dates...</div>';
+      try{
+        const r=await fetch('/api/logs/dates');
+        const dates=await r.json();
+        if(!dates.length){content.innerHTML='<div class="empty">No logs yet. Start a chat first!</div>';return}
+        // Group by year/month
+        const grouped={};
+        dates.forEach(d=>{const[y,m,dd]=d.split('/');const k=`${y}/${m}`;if(!grouped[k])grouped[k]=[];grouped[k].push(d)});
+        let html='<div class="date-grid">';
+        dates.forEach(d=>{
+          const[y,m,dd]=d.split('/');
+          html+=`<div class="date-card" onclick="loadDate('${d}')"><div class="day">${parseInt(dd)}</div><div class="month">${MONTHS[parseInt(m)-1]} ${y}</div></div>`;
+        });
+        html+='</div>';
+        content.innerHTML=html;
+      }catch(e){content.innerHTML='<div class="empty">Failed to load dates</div>';console.error(e)}
+    }
+
+    async function loadDate(dateStr){
+      const[y,m,d]=dateStr.split('/');
+      setBreadcrumb([{label:'Dates',action:"loadDates()"},{label:`${parseInt(d)} ${MONTHS[parseInt(m)-1]} ${y}`}]);
+      content.innerHTML='<div class="loading">Loading sessions...</div>';
+      try{
+        const r=await fetch(`/api/logs/dates/${y}/${m}/${d}/sessions`);
+        const sessions=await r.json();
+        if(!sessions.length){content.innerHTML='<div class="empty">No sessions on this date</div>';return}
+        let html='<div class="panel">';
+        sessions.forEach((s,i)=>{
+          const t=new Date(s.firstTimestamp);
+          const time=t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+          html+=`<div class="list-item" onclick="loadTurns('${s.sessionId}','${dateStr}')"><div class="label">Session ${i+1} <span style="font-size:.75rem;opacity:.5;margin-left:.5rem">${time}</span></div><div class="meta">${s.turnCount} turn${s.turnCount>1?'s':''}</div></div>`;
+        });
+        html+='</div>';
+        content.innerHTML=html;
+      }catch(e){content.innerHTML='<div class="empty">Failed to load sessions</div>';console.error(e)}
+    }
+
+    async function loadTurns(sid,dateStr){
+      const[y,m,d]=dateStr.split('/');
+      setBreadcrumb([{label:'Dates',action:"loadDates()"},{label:`${parseInt(d)} ${MONTHS[parseInt(m)-1]} ${y}`,action:`loadDate('${dateStr}')`},{label:'Conversation'}]);
+      content.innerHTML='<div class="loading">Loading conversation...</div>';
+      try{
+        const r=await fetch(`/api/logs/sessions/${sid}/turns`);
+        const turns=await r.json();
+        if(!turns.length){content.innerHTML='<div class="empty">No turns found</div>';return}
+        let html='<div class="panel">';
+        turns.forEach(t=>{
+          const ts=t.timestamp?new Date(t.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+          const hasAudio=!!t.audioS3Key;
+          html+=`<div class="turn-card"><div class="turn-header"><span class="turn-num">Turn ${t.turnNumber}</span><div style="display:flex;align-items:center;gap:.5rem"><span class="turn-time">${ts}</span>${hasAudio?`<button class="play-btn" onclick="playAudio('${t.audioS3Key}',this)">▶ Play voice</button>`:''}</div></div><div class="turn-text">`;
+          if(t.userText)html+=`<div class="user"><span class="role">👧 Child:</span>${esc(t.userText)}</div>`;
+          if(t.assistantText)html+=`<div class="assistant"><span class="role">🤖 Tutor:</span>${esc(t.assistantText)}</div>`;
+          if(!t.userText&&!t.assistantText)html+=`<div style="opacity:.4;font-size:.8rem">(audio only — no text transcription)</div>`;
+          html+=`</div></div>`;
+        });
+        html+='</div>';
+        content.innerHTML=html;
+      }catch(e){content.innerHTML='<div class="empty">Failed to load conversation</div>';console.error(e)}
+    }
+
+    async function playAudio(audioKey,btn){
+      btn.disabled=true;btn.textContent='⏳ Loading...';
+      try{
+        const parts=audioKey.replace(/\\/g,'/').split('/');
+        let sessionId,turnNum,dateStr;
+        if(parts.length>=6){dateStr=parts.slice(1,4).join('/');sessionId=parts[4];turnNum=parseInt(parts[5])}
+        else{dateStr=parts.slice(-5,-2).join('/');sessionId=parts[parts.length-2];turnNum=parseInt(parts[parts.length-1])}
+        const r=await fetch(`/api/audio/${sessionId}/${turnNum}?date=${dateStr}`);
+        if(!r.ok)throw new Error('Not found');
+        const buf=await r.arrayBuffer();
+        const int16=new Int16Array(buf);
+        const float32=new Float32Array(int16.length);
+        for(let i=0;i<int16.length;i++)float32[i]=int16[i]/0x8000;
+        if(!playCtx)playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+        const abuf=playCtx.createBuffer(1,float32.length,SAMPLE_RATE);
+        abuf.getChannelData(0).set(float32);
+        const src=playCtx.createBufferSource();
+        src.buffer=abuf;src.connect(playCtx.destination);
+        btn.textContent='⏹ Playing...';
+        src.onended=()=>{btn.disabled=false;btn.textContent='▶ Play voice'};
+        src.start();
+      }catch(e){console.error(e);btn.disabled=false;btn.textContent='❌ Error'}
+    }
+
+    function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+    loadDates();
+  </script>
+</body>
+</html>
