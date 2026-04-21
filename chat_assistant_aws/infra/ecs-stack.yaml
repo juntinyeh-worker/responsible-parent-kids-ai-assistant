@@ -40,7 +40,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourcePrefixListId: pl-3b927c52
+          SourcePrefixListId: pl-82a045eb
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -137,6 +137,9 @@ Resources:
                 - Effect: Allow
                   Action: [s3:PutObject, s3:GetObject]
                   Resource: !Sub 'arn:aws:s3:::${S3LogBucket}/*'
+                - Effect: Allow
+                  Action: s3:ListBucket
+                  Resource: !Sub 'arn:aws:s3:::${S3LogBucket}'
           - !Ref AWS::NoValue
 
   LogGroup:
