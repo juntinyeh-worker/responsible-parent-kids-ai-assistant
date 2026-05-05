@@ -1,6 +1,6 @@
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-RUN dnf install -y python3.12 python3.12-pip && dnf clean all && \
+RUN dnf upgrade -y && dnf install -y python3.12 python3.12-pip && dnf clean all && \
     alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 WORKDIR /app
